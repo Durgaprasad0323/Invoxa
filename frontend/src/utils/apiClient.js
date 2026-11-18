@@ -1,6 +1,8 @@
-const API_BASE_URL = typeof window !== 'undefined'
-  ? (window.location.port === '5173' ? '/api' : `http://${window.location.hostname}:5000/api`)
-  : 'http://localhost:5000/api'
+const API_BASE_URL = import.meta.env.VITE_API_URL
+  ? (import.meta.env.VITE_API_URL.replace(/\/+$/, '').endsWith('/api') ? import.meta.env.VITE_API_URL.replace(/\/+$/, '') : `${import.meta.env.VITE_API_URL.replace(/\/+$/, '')}/api`)
+  : (typeof window !== 'undefined'
+      ? (window.location.port === '5173' ? '/api' : `http://${window.location.hostname}:5000/api`)
+      : 'http://localhost:5000/api')
 
 // Helper for authorized API calls
 async function request(endpoint, options = {}) {
