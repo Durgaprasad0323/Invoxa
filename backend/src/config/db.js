@@ -4,6 +4,11 @@ import { fileURLToPath } from 'url'
 import bcrypt from 'bcryptjs'
 import mongoose from 'mongoose'
 import dotenv from 'dotenv'
+import dns from 'dns'
+
+try {
+  dns.setServers(['8.8.8.8', '8.8.4.4', '1.1.1.1'])
+} catch (_) {}
 import { UserModel } from '../models/User.js'
 import { CompanyModel } from '../models/Company.js'
 import { InvoiceModel } from '../models/Invoice.js'
