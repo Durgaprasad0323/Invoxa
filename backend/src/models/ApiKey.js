@@ -5,6 +5,13 @@ const apiKeySchema = new mongoose.Schema({
   userId: { type: String, required: true, index: true },
   companyId: { type: String, required: true, index: true },
   name: { type: String, required: true },
+  environment: { type: String, enum: ['live', 'test'], default: 'live' },
+  developerInfo: {
+    developerName: { type: String, required: true },
+    contactEmail: { type: String, required: true },
+    websiteUrl: { type: String, required: true },
+    purpose: { type: String, required: true }
+  },
   keyHash: { type: String, required: true, unique: true, select: false },
   keyPrefix: { type: String, required: true },
   createdAt: { type: Date, default: Date.now },

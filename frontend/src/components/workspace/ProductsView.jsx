@@ -1,203 +1,128 @@
-import React, { useState } from 'react'
+import React, { useMemo, useState } from 'react'
 import { formatINR } from '../../utils/calculations'
+import Icon from '../ui/Icon'
 
-export default function ProductsView({
-  products,
-  onAddProduct,
-  onDeleteProduct,
-  searchQuery = ''
-}) {
-  const [showModal, setShowModal] = useState(false)
-  const [newProd, setNewProd] = useState({
-    name: '',
-    category: 'General',
-    hsnSac: '998314',
-    unit: 'Unit',
-    rate: '',
-    taxRate: 18
-  })
+const blankProduct = () => ({ name: '', sku: '', category: 'General', hsnSac: '', unit: 'Pcs', rate: '', buyPrice: '', taxRate: 18, trackInventory: false, stock: 0, minStock: 0 })
+const productRate = product => Number(product.rate ?? product.price ?? 0)
 
-  const filtered = products.filter((p) => {
-    const q = searchQuery.toLowerCase().trim()
-    if (!q) return true
-    return (
-      p.name.toLowerCase().includes(q) ||
-      p.category.toLowerCase().includes(q) ||
-      p.hsnSac.toLowerCase().includes(q)
-    )
-  })
-
-  const handleSave = (e) => {
-    e.preventDefault()
-    if (!newProd.name.trim() || !newProd.rate) return
-    onAddProduct({
-      ...newProd,
-      id: `prod_${Date.now()}`,
-      rate: parseFloat(newProd.rate) || 0,
-      taxRate: parseFloat(newProd.taxRate) || 0
+export default function ProductsView({ products = [], onAddProduct, onUpdateProduct, onDeleteProduct, searchQuery = '' }) {
+  const [showForm, setShowForm] = useState(false)
+  const [editingId, setEditingId] = useState(null)
+  const [form, setForm] = useState(blankProduct)
+  const [filter, setFilter] = useState('All')
+  const [error, setError] = useState('')
+  const stockProducts = products.filter(product => product.trackInventory)
+  const stockValue = stockProducts.reduce((sum, product) => sum + (Number(product.stock) || 0) * (Number(product.buyPrice) || 0), 0)
+  const visible = useMemo(() => {
+    const query = searchQuery.trim().toLowerCase()
+    return products.filter(product => {
+      const kindMatches = filter === 'All' || (filter === 'Products' ? product.trackInventory : !product.trackInventory)
+      const textMatches = !query || [product.name, product.category, product.sku, product.hsnSac].some(value => String(value || '').toLowerCase().includes(query))
+      return kindMatches && textMatches
     })
-    setNewProd({
-      name: '',
-      category: 'General',
-      hsnSac: '998314',
-      unit: 'Unit',
-      rate: '',
-      taxRate: 18
-    })
-    setShowModal(false)
+  }, [products, filter, searchQuery])
+
+  const openNew = () => { setEditingId(null); setForm(blankProduct()); setError(''); setShowForm(true) }
+  const openEdit = product => {
+    setEditingId(product.id)
+    setForm({ ...blankProduct(), ...product, rate: productRate(product), buyPrice: product.buyPrice ?? '' })
+    setError('')
+    setShowForm(true)
+  }
+  const handleSave = event => {
+    event.preventDefault()
+    const rate = Number(form.rate)
+    if (!form.name.trim() || !Number.isFinite(rate) || rate < 0) {
+      setError('Enter an item name and a valid selling price.')
+      return
+    }
+    const saved = {
+      ...form,
+      id: editingId || `prod_${Date.now()}`,
+      name: form.name.trim(),
+      category: form.category.trim() || 'General',
+      sku: form.sku.trim(),
+      hsnSac: form.hsnSac.trim(),
+      rate,
+      price: rate,
+      buyPrice: Number(form.buyPrice) || 0,
+      taxRate: Number(form.taxRate) || 0,
+      stock: form.trackInventory ? Math.max(0, Number(form.stock) || 0) : 0,
+      minStock: form.trackInventory ? Math.max(0, Number(form.minStock) || 0) : 0,
+      trackInventory: Boolean(form.trackInventory)
+    }
+    if (editingId) onUpdateProduct?.(editingId, saved)
+    else onAddProduct?.(saved)
+    setShowForm(false)
+    setEditingId(null)
+  }
+
+  const removeProduct = product => {
+    if (window.confirm(`Delete ${product.name} from your catalog?`)) onDeleteProduct?.(product.id)
   }
 
   return (
-    <div className="workspace-view-container">
-      {/* Control Bar */}
-      <div className="table-controls-bar">
-        <div>
-          <h3>Products & Services Catalog</h3>
-          <p className="section-subtext">Manage items, preset rates, and HSN/SAC tax codes for fast billing.</p>
-        </div>
-        <button className="primary-create-btn" onClick={() => setShowModal(true)}>
-          + Add New Item
-        </button>
+    <div className="workspace-view-container catalog-page">
+      <div className="table-controls-bar purchases-heading">
+        <div><h3>Products & Services</h3><p className="section-subtext">Manage your item catalog, pricing, HSN/SAC and GST defaults.</p></div>
+        <button type="button" className="btn-primary-action" onClick={openNew}>+ Add Item</button>
       </div>
 
-      {/* Table */}
-      <div className="table-wrapper">
-        <table className="swipe-table">
-          <thead>
-            <tr>
-              <th>ITEM / SERVICE NAME</th>
-              <th>CATEGORY</th>
-              <th>HSN / SAC</th>
-              <th>UNIT</th>
-              <th>BASE RATE</th>
-              <th>GST RATE</th>
-              <th className="actions-header">ACTIONS</th>
-            </tr>
-          </thead>
+      <div className="metrics-row purchases-metrics">
+        <div className="metric-card"><span className="metric-label">Catalog Items</span><span className="metric-value">{products.length}</span></div>
+        <div className="metric-card"><span className="metric-label">Stock Tracked</span><span className="metric-value">{stockProducts.length}</span></div>
+        <div className="metric-card"><span className="metric-label">Stock Cost Value</span><span className="metric-value">{formatINR(stockValue)}</span></div>
+      </div>
+
+      <div className="purchases-toolbar">
+        <div className="tab-filters" role="group" aria-label="Filter catalog items">{['All', 'Products', 'Services'].map(value => <button type="button" key={value} className={`filter-btn ${filter === value ? 'active' : ''}`} onClick={() => setFilter(value)}>{value}</button>)}</div>
+        <span className="purchases-count">{visible.length} {visible.length === 1 ? 'item' : 'items'}</span>
+      </div>
+
+      <div className="swipe-table-wrap purchases-table-wrap">
+        <table className="swipe-table purchases-table">
+          <thead><tr><th>Item</th><th>SKU / HSN</th><th>Category</th><th>Unit</th><th>Sell Price</th><th>GST</th><th>Stock</th><th>Actions</th></tr></thead>
           <tbody>
-            {filtered.map((p) => (
-              <tr key={p.id} className="swipe-row">
-                <td>
-                  <strong>{p.name}</strong>
-                </td>
-                <td>
-                  <span className="badge-category">{p.category}</span>
-                </td>
-                <td>
-                  <code>{p.hsnSac}</code>
-                </td>
-                <td>{p.unit}</td>
-                <td>
-                  <strong>{formatINR(p.rate)}</strong>
-                </td>
-                <td>
-                  <span className="badge-tax">{p.taxRate}%</span>
-                </td>
-                <td>
-                  <button
-                    className="action-icon-btn delete-btn"
-                    onClick={() => onDeleteProduct(p.id)}
-                    title="Delete Item"
-                  >
-                    🗑️
-                  </button>
-                </td>
+            {visible.length === 0 ? <tr><td colSpan={8} className="empty-row">{products.length ? 'No items match your search.' : 'Your catalog is empty. Add a product or service to use it in invoices.'}</td></tr> : visible.map(product => {
+              const stock = Number(product.stock) || 0
+              const threshold = Number(product.minStock) || 0
+              const stockStatus = !product.trackInventory ? 'Service' : stock === 0 ? 'Out of stock' : stock <= threshold ? 'Low stock' : 'In stock'
+              return <tr key={product.id}>
+                <td><div className="purchase-vendor-cell"><strong>{product.name}</strong>{product.trackInventory && <small>Cost: {formatINR(Number(product.buyPrice) || 0)}</small>}</div></td>
+                <td><div className="purchase-vendor-cell"><span>{product.sku || '—'}</span>{product.hsnSac && <small>HSN/SAC: {product.hsnSac}</small>}</div></td>
+                <td>{product.category || 'General'}</td><td>{product.unit || 'Pcs'}</td><td><strong>{formatINR(productRate(product))}</strong></td><td>{Number(product.taxRate) || 0}%</td>
+                <td><span className={`status-pill ${stockStatus === 'In stock' ? 'pill-paid' : stockStatus === 'Low stock' || stockStatus === 'Out of stock' ? 'pill-unpaid' : 'pill-draft'}`}>{product.trackInventory ? `${stock} ${product.unit || 'Pcs'} · ${stockStatus}` : 'Not tracked'}</span></td>
+                <td><div className="row-actions"><button type="button" className="row-action-btn" title="Edit item" aria-label={`Edit ${product.name}`} onClick={() => openEdit(product)}><Icon name="edit" size={15} /></button><button type="button" className="row-action-btn danger" title="Delete item" aria-label={`Delete ${product.name}`} onClick={() => removeProduct(product)}><Icon name="trash" size={15} /></button></div></td>
               </tr>
-            ))}
+            })}
           </tbody>
         </table>
       </div>
 
-      {/* Add Product Modal */}
-      {showModal && (
-        <div className="modal-backdrop">
-          <div className="modal-card">
-            <div className="modal-header">
-              <h3>Add Product or Service</h3>
-              <button className="modal-close-btn" onClick={() => setShowModal(false)}>✕</button>
+      {showForm && <div className="purchase-modal-backdrop" onMouseDown={event => { if (event.target === event.currentTarget) setShowForm(false) }}>
+        <form className="purchase-modal catalog-modal" onSubmit={handleSave} role="dialog" aria-modal="true" aria-labelledby="catalog-modal-title">
+          <header className="purchase-modal-header"><div><span className="purchases-eyebrow">ITEM CATALOG</span><h2 id="catalog-modal-title">{editingId ? 'Edit item' : 'Add product or service'}</h2><p>Set invoice defaults and choose whether to track stock.</p></div><button className="purchase-modal-close" type="button" aria-label="Close item form" onClick={() => setShowForm(false)}>×</button></header>
+          <div className="purchase-modal-content">
+            <div className="purchase-form-grid">
+              <label className="purchase-field purchase-field-wide">Item name *<input autoFocus required value={form.name} onChange={event => setForm(current => ({ ...current, name: event.target.value }))} placeholder="Product or service name" /></label>
+              <label className="purchase-field">Category<input value={form.category} onChange={event => setForm(current => ({ ...current, category: event.target.value }))} placeholder="General" /></label>
+              <label className="purchase-field">SKU / code<input value={form.sku} onChange={event => setForm(current => ({ ...current, sku: event.target.value }))} /></label>
+              <label className="purchase-field">HSN / SAC<input value={form.hsnSac} onChange={event => setForm(current => ({ ...current, hsnSac: event.target.value }))} /></label>
+              <label className="purchase-field">Unit<input value={form.unit} onChange={event => setForm(current => ({ ...current, unit: event.target.value }))} placeholder="Pcs, kg, hour" /></label>
+              <label className="purchase-field">Selling price (₹) *<input type="number" min="0" step="0.01" required value={form.rate} onChange={event => setForm(current => ({ ...current, rate: event.target.value }))} /></label>
+              <label className="purchase-field">GST rate<select value={form.taxRate} onChange={event => setForm(current => ({ ...current, taxRate: event.target.value }))}>{[0, 3, 5, 12, 18, 28].map(rate => <option key={rate} value={rate}>{rate}%</option>)}</select></label>
+              <label className="purchase-field purchase-stock-toggle"><span><input type="checkbox" checked={Boolean(form.trackInventory)} onChange={event => setForm(current => ({ ...current, trackInventory: event.target.checked }))} /> Track stock for this product</span></label>
+              {form.trackInventory && <>
+                <label className="purchase-field">Opening stock<input type="number" min="0" step="any" value={form.stock} onChange={event => setForm(current => ({ ...current, stock: event.target.value }))} /></label>
+                <label className="purchase-field">Low stock alert at<input type="number" min="0" step="any" value={form.minStock} onChange={event => setForm(current => ({ ...current, minStock: event.target.value }))} /></label>
+                <label className="purchase-field">Cost / buy price (₹)<input type="number" min="0" step="0.01" value={form.buyPrice} onChange={event => setForm(current => ({ ...current, buyPrice: event.target.value }))} /></label>
+              </>}
             </div>
-            <form onSubmit={handleSave} className="modal-form">
-              <div className="form-group">
-                <label>Item Name *</label>
-                <input
-                  type="text"
-                  required
-                  placeholder="e.g. 3D Architectural Elevation"
-                  value={newProd.name}
-                  onChange={(e) => setNewProd({ ...newProd, name: e.target.value })}
-                />
-              </div>
-
-              <div className="form-row two-col">
-                <div className="form-group">
-                  <label>Category</label>
-                  <input
-                    type="text"
-                    placeholder="e.g. Design Services"
-                    value={newProd.category}
-                    onChange={(e) => setNewProd({ ...newProd, category: e.target.value })}
-                  />
-                </div>
-                <div className="form-group">
-                  <label>HSN / SAC Code</label>
-                  <input
-                    type="text"
-                    placeholder="e.g. 998314"
-                    value={newProd.hsnSac}
-                    onChange={(e) => setNewProd({ ...newProd, hsnSac: e.target.value })}
-                  />
-                </div>
-              </div>
-
-              <div className="form-row two-col">
-                <div className="form-group">
-                  <label>Price / Rate (₹) *</label>
-                  <input
-                    type="number"
-                    required
-                    placeholder="45000"
-                    value={newProd.rate}
-                    onChange={(e) => setNewProd({ ...newProd, rate: e.target.value })}
-                  />
-                </div>
-                <div className="form-group">
-                  <label>Unit</label>
-                  <input
-                    type="text"
-                    placeholder="e.g. Project, Hours, Pcs"
-                    value={newProd.unit}
-                    onChange={(e) => setNewProd({ ...newProd, unit: e.target.value })}
-                  />
-                </div>
-              </div>
-
-              <div className="form-group">
-                <label>GST Rate (%)</label>
-                <select
-                  value={newProd.taxRate}
-                  onChange={(e) => setNewProd({ ...newProd, taxRate: e.target.value })}
-                >
-                  <option value={0}>0% (Exempt / Healthcare)</option>
-                  <option value={3}>3% (Gold & Jewelry)</option>
-                  <option value={5}>5% (Transport / F&B)</option>
-                  <option value={12}>12% (Pharma / Hotel)</option>
-                  <option value={18}>18% (Standard Services / IT)</option>
-                  <option value={28}>28% (Luxury Goods)</option>
-                </select>
-              </div>
-
-              <div className="modal-actions">
-                <button type="button" className="btn-cancel" onClick={() => setShowModal(false)}>
-                  Cancel
-                </button>
-                <button type="submit" className="btn-save">
-                  Save Item
-                </button>
-              </div>
-            </form>
+            {error && <p className="purchase-form-error" role="alert">{error}</p>}
           </div>
-        </div>
-      )}
+          <footer className="purchase-modal-footer"><button type="button" className="btn-secondary-action" onClick={() => setShowForm(false)}>Cancel</button><button type="submit" className="btn-primary-action">{editingId ? 'Save changes' : 'Save item'}</button></footer>
+        </form>
+      </div>}
     </div>
   )
 }

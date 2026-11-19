@@ -5,12 +5,14 @@ import morgan from 'morgan'
 
 import authRoutes from './routes/authRoutes.js'
 import invoiceRoutes from './routes/invoiceRoutes.js'
+import creditNoteRoutes from './routes/creditNoteRoutes.js'
 import customerRoutes from './routes/customerRoutes.js'
 import productRoutes from './routes/productRoutes.js'
 import adminRoutes from './routes/adminRoutes.js'
 import paymentRoutes from './routes/paymentRoutes.js'
 import developerApiRoutes from './routes/developerApiRoutes.js'
 import publicApiRoutes from './routes/publicApiRoutes.js'
+import planRoutes from './routes/planRoutes.js'
 import { connectDB, db } from './config/db.js'
 
 dotenv.config()
@@ -23,16 +25,23 @@ app.use(cors({
   origin: true,
   credentials: true
 }))
-app.use(express.json())
+app.use(express.json({ limit: '5mb' }))
 app.use(morgan('dev'))
 
 // Health Check
 app.get('/api/health', (req, res) => {
+  const persistenceWarning = process.env.NODE_ENV === 'production' &&
+    !db.isMongoConnected &&
+    !process.env.INVOXA_DATA_FILE
+    ? 'Production storage is using the default local file path. Configure MongoDB or a persistent disk before saving invoices.'
+    : null
+
   res.json({
     status: 'healthy',
     platform: 'Invoxa Invoice Platform API',
     database: db.isMongoConnected ? 'MongoDB (Connected)' : 'File-based (Local database.json)',
     mongoConnected: db.isMongoConnected,
+    persistenceWarning,
     version: '1.0.0',
     timestamp: new Date().toISOString()
   })
@@ -41,10 +50,12 @@ app.get('/api/health', (req, res) => {
 // Route Handlers
 app.use('/api/auth', authRoutes)
 app.use('/api/invoices', invoiceRoutes)
+app.use('/api/credit-notes', creditNoteRoutes)
 app.use('/api/customers', customerRoutes)
 app.use('/api/products', productRoutes)
 app.use('/api/admin', adminRoutes)
 app.use('/api/payments', paymentRoutes)
+app.use('/api/plans', planRoutes)
 app.use('/api/developer', developerApiRoutes)
 app.use('/api/v1', publicApiRoutes)
 

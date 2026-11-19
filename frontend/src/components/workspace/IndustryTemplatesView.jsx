@@ -5,7 +5,10 @@ export default function IndustryTemplatesView({
   invoiceToEdit,
   onClearEditInvoice,
   onSaveInvoice,
-  onNavigateToInvoices
+  onNavigateToInvoices,
+  isPro = false,
+  onUpgrade,
+  businessProfile = {}
 }) {
   return (
     <div className="workspace-view-container">
@@ -14,6 +17,9 @@ export default function IndustryTemplatesView({
         onClearEditInvoice={onClearEditInvoice}
         onSaveInvoice={onSaveInvoice}
         onNavigateToInvoices={onNavigateToInvoices}
+        isPro={isPro}
+        onUpgrade={onUpgrade}
+        businessProfile={businessProfile}
       />
     </div>
   )

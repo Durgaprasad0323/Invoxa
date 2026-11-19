@@ -1,229 +1,140 @@
-import React, { useState } from 'react'
+import React, { useEffect, useState } from 'react'
 import { api } from '../../utils/apiClient'
+import { PLAN_CATALOG } from '../../utils/plans'
+import Icon from '../ui/Icon'
 
-export default function SubscriptionModal({ isOpen, onClose, currentPlan = 'free', onSubscriptionSuccess }) {
-  const [selectedPlan, setSelectedPlan] = useState('pro')
+let checkoutScriptPromise
+
+const loadRazorpayCheckout = () => {
+  if (window.Razorpay) return Promise.resolve()
+  if (checkoutScriptPromise) return checkoutScriptPromise
+  checkoutScriptPromise = new Promise((resolve, reject) => {
+    const existing = document.querySelector('script[data-razorpay-checkout]')
+    if (existing) {
+      existing.addEventListener('load', resolve, { once: true })
+      existing.addEventListener('error', () => reject(new Error('Razorpay Checkout could not be loaded.')), { once: true })
+      return
+    }
+    const script = document.createElement('script')
+    script.src = 'https://checkout.razorpay.com/v1/checkout.js'
+    script.async = true
+    script.dataset.razorpayCheckout = 'true'
+    script.onload = resolve
+    script.onerror = () => reject(new Error('Razorpay Checkout could not be loaded. Check your internet connection and try again.'))
+    document.body.appendChild(script)
+  }).catch(error => {
+    checkoutScriptPromise = undefined
+    throw error
+  })
+  return checkoutScriptPromise
+}
+
+export default function SubscriptionModal({
+  isOpen,
+  onClose,
+  initialPlan = 'pro',
+  initialBillingCycle = 'yearly',
+  currentUser = {},
+  onSubscriptionSuccess
+}) {
   const [loading, setLoading] = useState(false)
+  const [error, setError] = useState('')
   const [successMsg, setSuccessMsg] = useState('')
+  const [billingCycle, setBillingCycle] = useState(initialBillingCycle)
+  const plan = PLAN_CATALOG.find(entry => entry.id === initialPlan && entry.id !== 'free') || PLAN_CATALOG.find(entry => entry.id === 'pro')
+  const price = billingCycle === 'monthly' ? plan.monthlyPrice : plan.yearlyPrice
+
+  useEffect(() => {
+    if (isOpen) {
+      setLoading(false)
+      setError('')
+      setSuccessMsg('')
+      setBillingCycle(initialBillingCycle)
+    }
+  }, [isOpen, initialPlan, initialBillingCycle])
 
   if (!isOpen) return null
 
   const handleSubscribe = async () => {
     setLoading(true)
+    setError('')
     try {
-      // 1. Create order
-      const order = await api.createSubscriptionOrder(selectedPlan)
-      
-      // 2. Process & verify payment
-      const res = await api.verifySubscriptionPayment(order.orderId, selectedPlan)
-      
-      setSuccessMsg(`🎉 Success! Your account is now upgraded to ${selectedPlan.toUpperCase()}!`)
-      setTimeout(() => {
-        if (onSubscriptionSuccess) {
-          onSubscriptionSuccess(res.user)
+      const order = await api.createSubscriptionOrder(plan.id, billingCycle)
+      await loadRazorpayCheckout()
+      if (!window.Razorpay) throw new Error('Razorpay Checkout is unavailable in this browser.')
+
+      const checkout = new window.Razorpay({
+        key: order.keyId,
+        amount: order.amount,
+        currency: order.currency,
+        name: 'Invoxa',
+        description: `${plan.name} ${billingCycle} plan`,
+        order_id: order.orderId,
+        prefill: {
+          name: currentUser.name || '',
+          email: currentUser.email || '',
+          contact: currentUser.phone || ''
+        },
+        theme: { color: '#15865a' },
+        modal: { ondismiss: () => setLoading(false) },
+        handler: async payment => {
+          try {
+            const result = await api.verifySubscriptionPayment({
+              plan: plan.id,
+              orderId: payment.razorpay_order_id,
+              paymentId: payment.razorpay_payment_id,
+              signature: payment.razorpay_signature
+            })
+            setSuccessMsg(`${plan.name} access is active through ${new Intl.DateTimeFormat('en-IN', { dateStyle: 'medium' }).format(new Date(result.user.subscriptionExpiry))}.`)
+            if (onSubscriptionSuccess) onSubscriptionSuccess(result.user)
+            setTimeout(() => onClose?.(), 1400)
+          } catch (verificationError) {
+            setError(verificationError.message || 'Payment could not be verified. Your plan has not changed.')
+          } finally {
+            setLoading(false)
+          }
         }
-        onClose()
-      }, 1500)
-    } catch (err) {
-      alert('Subscription payment failed. Please try again.')
-    } finally {
+      })
+
+      checkout.on('payment.failed', response => {
+        setError(response?.error?.description || 'Payment failed. Your current plan stays active.')
+        setLoading(false)
+      })
+      checkout.open()
+    } catch (checkoutError) {
+      setError(checkoutError.message || 'Checkout could not be started. Your current plan stays active.')
       setLoading(false)
     }
   }
 
   return (
-    <div className="modal-backdrop" onClick={onClose} style={{ zIndex: 1100 }}>
-      <div
-        className="modal-container"
-        onClick={(e) => e.stopPropagation()}
-        style={{
-          maxWidth: 620,
-          background: '#ffffff',
-          borderRadius: 16,
-          padding: 0,
-          overflow: 'hidden',
-          boxShadow: '0 20px 50px rgba(0,0,0,0.18)'
-        }}
-      >
-        {/* Header Banner */}
-        <div style={{
-          background: 'linear-gradient(135deg, #0f172a 0%, #1e3a8a 100%)',
-          color: '#ffffff',
-          padding: '28px 24px 20px',
-          position: 'relative'
-        }}>
-          <button
-            onClick={onClose}
-            style={{
-              position: 'absolute',
-              top: 16,
-              right: 18,
-              background: 'rgba(255,255,255,0.15)',
-              border: 'none',
-              borderRadius: '50%',
-              width: 32,
-              height: 32,
-              color: '#ffffff',
-              fontSize: 16,
-              cursor: 'pointer'
-            }}
-          >
-            ✕
-          </button>
-
-          <span style={{
-            background: '#eab308',
-            color: '#713f12',
-            padding: '4px 10px',
-            borderRadius: 20,
-            fontSize: '0.75rem',
-            fontWeight: 800,
-            letterSpacing: '0.5px'
-          }}>
-            PREMIUM PLAN
-          </span>
-          <h2 style={{ margin: '10px 0 4px', fontSize: '1.6rem', fontWeight: 800 }}>
-            Unlock Pro Billing Features
-          </h2>
-          <p style={{ margin: 0, color: '#93c5fd', fontSize: '0.9rem' }}>
-            Remove watermarks from all customer bills and unlock unlimited invoicing power.
-          </p>
+    <div className="modal-backdrop plan-checkout-backdrop" onMouseDown={event => { if (event.target === event.currentTarget && !loading) onClose?.() }}>
+      <div className="modal-container plan-checkout-modal" role="dialog" aria-modal="true" aria-labelledby="plan-checkout-title">
+        <div className="plan-checkout-header">
+          <div><span>INVOXA PLAN</span><h2 id="plan-checkout-title">{successMsg ? 'Payment confirmed' : `Subscribe to ${plan.name}`}</h2></div>
+          <button type="button" aria-label="Close" disabled={loading} onClick={onClose}>×</button>
         </div>
 
-        {/* Content Body */}
-        <div style={{ padding: '24px' }}>
-          {successMsg ? (
-            <div style={{
-              background: '#f0fdf4',
-              border: '1px solid #86efac',
-              color: '#15803d',
-              borderRadius: 12,
-              padding: '24px',
-              textAlign: 'center'
-            }}>
-              <div style={{ fontSize: '2.5rem', marginBottom: 8 }}>🎉</div>
-              <h3 style={{ margin: '0 0 6px', fontWeight: 800 }}>Congratulations!</h3>
-              <p style={{ margin: 0, fontSize: '0.95rem' }}>{successMsg}</p>
+        {successMsg ? (
+          <div className="plan-checkout-success"><span className="plan-checkout-success-icon"><Icon name="checkCircle" size={22} /></span><h3>Plan activated</h3><p>{successMsg}</p><small>Your account access has been updated.</small></div>
+        ) : (
+          <>
+            <div className="plan-checkout-summary">
+              <div><strong>{plan.name} {billingCycle} plan</strong><span>{billingCycle === 'monthly' ? 'One month' : 'One year'} of access · no automatic renewal</span></div>
+              <b>₹{price.toLocaleString('en-IN')}<small> / {billingCycle === 'monthly' ? 'month' : 'year'}</small></b>
             </div>
-          ) : (
-            <>
-              {/* Feature Checklist */}
-              <div style={{
-                display: 'grid',
-                gridTemplateColumns: '1fr 1fr',
-                gap: 12,
-                marginBottom: 24,
-                background: '#f8fafc',
-                padding: '16px',
-                borderRadius: 12,
-                border: '1px solid #e2e8f0'
-              }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: '0.88rem', color: '#0f172a' }}>
-                  <span style={{ color: '#16a34a', fontWeight: 800 }}>✓</span>
-                  <strong>No Watermarks on PDFs</strong>
-                </div>
-                <div style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: '0.88rem', color: '#0f172a' }}>
-                  <span style={{ color: '#16a34a', fontWeight: 800 }}>✓</span>
-                  <span>Unlimited Tax Invoices</span>
-                </div>
-                <div style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: '0.88rem', color: '#0f172a' }}>
-                  <span style={{ color: '#16a34a', fontWeight: 800 }}>✓</span>
-                  <span>Instant Scan &amp; Pay UPI QR</span>
-                </div>
-                <div style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: '0.88rem', color: '#0f172a' }}>
-                  <span style={{ color: '#16a34a', fontWeight: 800 }}>✓</span>
-                  <span>Multi-User Staff Collaboration</span>
-                </div>
-                <div style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: '0.88rem', color: '#0f172a' }}>
-                  <span style={{ color: '#16a34a', fontWeight: 800 }}>✓</span>
-                  <span>All 10 Designer Templates</span>
-                </div>
-                <div style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: '0.88rem', color: '#0f172a' }}>
-                  <span style={{ color: '#16a34a', fontWeight: 800 }}>✓</span>
-                  <span>Priority WhatsApp Support</span>
-                </div>
-              </div>
-
-              {/* Pricing Cards */}
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14, marginBottom: 24 }}>
-                {/* Pro Yearly (Selected) */}
-                <div
-                  onClick={() => setSelectedPlan('pro')}
-                  style={{
-                    border: `2px solid ${selectedPlan === 'pro' ? '#15865a' : '#e2e8f0'}`,
-                    background: selectedPlan === 'pro' ? '#f0fdf4' : '#ffffff',
-                    borderRadius: 12,
-                    padding: '16px',
-                    cursor: 'pointer',
-                    position: 'relative'
-                  }}
-                >
-                  <span style={{
-                    position: 'absolute',
-                    top: -10,
-                    right: 12,
-                    background: '#15865a',
-                    color: '#fff',
-                    padding: '2px 8px',
-                    borderRadius: 10,
-                    fontSize: '0.7rem',
-                    fontWeight: 800
-                  }}>
-                    POPULAR
-                  </span>
-                  <div style={{ fontWeight: 700, fontSize: '0.95rem', color: '#0f172a' }}>Pro Plan</div>
-                  <div style={{ fontSize: '1.6rem', fontWeight: 800, color: '#15865a', margin: '6px 0 2px' }}>
-                    ₹2,999 <span style={{ fontSize: '0.8rem', color: '#64748b', fontWeight: 500 }}>/ year</span>
-                  </div>
-                  <div style={{ fontSize: '0.78rem', color: '#15865a', fontWeight: 600 }}>Just ₹249 / month</div>
-                </div>
-
-                {/* Enterprise */}
-                <div
-                  onClick={() => setSelectedPlan('enterprise')}
-                  style={{
-                    border: `2px solid ${selectedPlan === 'enterprise' ? '#15865a' : '#e2e8f0'}`,
-                    background: selectedPlan === 'enterprise' ? '#f0fdf4' : '#ffffff',
-                    borderRadius: 12,
-                    padding: '16px',
-                    cursor: 'pointer'
-                  }}
-                >
-                  <div style={{ fontWeight: 700, fontSize: '0.95rem', color: '#0f172a' }}>Enterprise</div>
-                  <div style={{ fontSize: '1.6rem', fontWeight: 800, color: '#0f172a', margin: '6px 0 2px' }}>
-                    ₹9,999 <span style={{ fontSize: '0.8rem', color: '#64748b', fontWeight: 500 }}>/ year</span>
-                  </div>
-                  <div style={{ fontSize: '0.78rem', color: '#64748b' }}>Custom domain + dedicated API</div>
-                </div>
-              </div>
-
-              {/* Checkout Action Button */}
-              <button
-                type="button"
-                onClick={handleSubscribe}
-                disabled={loading}
-                style={{
-                  width: '100%',
-                  background: 'linear-gradient(135deg, #15865a 0%, #0f6342 100%)',
-                  color: '#ffffff',
-                  border: 'none',
-                  borderRadius: 10,
-                  padding: '14px',
-                  fontSize: '1rem',
-                  fontWeight: 700,
-                  cursor: 'pointer',
-                  boxShadow: '0 4px 14px rgba(21, 134, 90, 0.3)'
-                }}
-              >
-                {loading ? 'Processing Secure Payment…' : `Pay & Activate ${selectedPlan === 'pro' ? '₹2,999' : '₹9,999'} / Year 🚀`}
-              </button>
-
-              <div style={{ textAlign: 'center', marginTop: 12, fontSize: '0.78rem', color: '#94a3b8' }}>
-                🔒 256-Bit Encrypted Checkout · Supports UPI, Cards, NetBanking
-              </div>
-            </>
-          )}
-        </div>
+            <div className="plan-checkout-billing-switch" role="group" aria-label="Billing period">
+              <button type="button" aria-pressed={billingCycle === 'monthly'} className={billingCycle === 'monthly' ? 'selected' : ''} onClick={() => setBillingCycle('monthly')} disabled={loading}>Monthly</button>
+              <button type="button" aria-pressed={billingCycle === 'yearly'} className={billingCycle === 'yearly' ? 'selected' : ''} onClick={() => setBillingCycle('yearly')} disabled={loading}>Annual</button>
+            </div>
+            <ul className="plan-checkout-includes">{plan.features.slice(1).map(feature => <li key={feature}><Icon name="checkCircle" size={14} />{feature}</li>)}</ul>
+            {error && <div className="plan-checkout-error" role="alert">{error}</div>}
+            <button type="button" className="plan-checkout-pay-button" disabled={loading} onClick={handleSubscribe}>
+              {loading ? 'Opening secure checkout…' : `Continue to payment · ₹${price.toLocaleString('en-IN')}`}
+            </button>
+            <p className="plan-checkout-caption">Your plan changes only after Invoxa verifies the payment with Razorpay. Cancelled or failed payments leave your current access unchanged.</p>
+          </>
+        )}
       </div>
     </div>
   )

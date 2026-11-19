@@ -1,5 +1,4 @@
 import React, { useState, useEffect, useRef } from 'react'
-import { api } from '../utils/apiClient'
 import {
   STYLES,
   INDUSTRIES,
@@ -23,6 +22,9 @@ import {
   render,
   msgDefault
 } from '../utils/engineRenderer'
+import { addFreeInvoiceWatermark } from '../utils/invoiceWatermark'
+import { loadHtml2Pdf } from '../utils/pdfGenerator'
+import Icon from './ui/Icon'
 import '../templateEngine.css'
 
 export default function TemplateMixer({
@@ -30,6 +32,9 @@ export default function TemplateMixer({
   onClearEditInvoice,
   onSaveInvoice,
   onNavigateToInvoices,
+  isPro = false,
+  onUpgrade,
+  businessProfile = {},
   initialIndustry = 'interior'
 }) {
   const [activeTab, setActiveTab] = useState('start')
@@ -70,7 +75,7 @@ export default function TemplateMixer({
   const [verifiedSeal, setVerifiedSeal] = useState(true)
   
   const [logoImgUrl, setLogoImgUrl] = useState(null)
-  const [upiQrUrl, setUpiQrUrl] = useState(() => invoiceToEdit?.paymentDetails?.upiQrUrl || invoiceToEdit?.upiQrUrl || invoiceToEdit?.templateStyle?.qrImg || null)
+  const [upiQrUrl, setUpiQrUrl] = useState(() => invoiceToEdit?.paymentDetails?.upiQrUrl || invoiceToEdit?.upiQrUrl || (businessProfile.upiQrUrl !== undefined ? businessProfile.upiQrUrl || null : invoiceToEdit?.templateStyle?.qrImg || null))
   const [reviewQrUrl, setReviewQrUrl] = useState(() => invoiceToEdit?.reviewQrUrl || invoiceToEdit?.templateStyle?.reviewQrImg || null)
   const [logoPalettes, setLogoPalettes] = useState([])
   const [baseStarterName, setBaseStarterName] = useState('Interior designer starter')
@@ -94,10 +99,10 @@ export default function TemplateMixer({
   const [cuNo, setCuNo] = useState(`INV-2026-${String(100 + (initialStyleObj.id ? initialStyleObj.id.length * 17 : 34) + (initialIndObj.l ? initialIndObj.l.length * 7 : 28)).padStart(4, '0')}`)
   const [cuDate, setCuDate] = useState(() => new Date().toISOString().split('T')[0])
   const [cuDue, setCuDue] = useState(() => new Date(Date.now() + 15 * 86400000).toISOString().split('T')[0])
-  const [cuBank, setCuBank] = useState(initialStyleObj.bank ? initialStyleObj.bank[0] : 'HDFC Bank Ltd')
-  const [cuAc, setCuAc] = useState(initialStyleObj.bank ? initialStyleObj.bank[1] : '50200012345678')
-  const [cuIfsc, setCuIfsc] = useState(initialStyleObj.bank ? initialStyleObj.bank[2] : 'HDFC0000240')
-  const [cuUpi, setCuUpi] = useState(initialStyleObj.upi || 'pay@upi')
+  const [cuBank, setCuBank] = useState(businessProfile.bankName ?? initialStyleObj.bank?.[0] ?? '')
+  const [cuAc, setCuAc] = useState(businessProfile.accountNumber ?? initialStyleObj.bank?.[1] ?? '')
+  const [cuIfsc, setCuIfsc] = useState(businessProfile.ifsc ?? initialStyleObj.bank?.[2] ?? '')
+  const [cuUpi, setCuUpi] = useState(businessProfile.upiId ?? initialStyleObj.upi ?? '')
   const [cuItems, setCuItems] = useState(() =>
     (initialStyleObj.items || []).map(it => ({
       desc: it[0],
@@ -119,6 +124,18 @@ export default function TemplateMixer({
   const [pdfGenerating, setPdfGenerating] = useState(false)
   const [saveSuccessToast, setSaveSuccessToast] = useState(null)
   const [isSaving, setIsSaving] = useState(false)
+
+  const requestWatermarkUpgrade = () => onUpgrade?.('pro')
+  const handleMixerDocumentTypeChange = (nextType) => {
+    setCuDocType(nextType)
+    setCuNo(currentNumber => {
+      const prefix = { invoice: 'INV', quote: 'QT', estimate: 'EST' }[nextType]
+      return /^(INV|QT|EST)(-\d{4}-.*)$/i.test(currentNumber)
+        ? currentNumber.replace(/^(INV|QT|EST)/i, prefix)
+        : currentNumber
+    })
+    setCustomPreviewHtml(null)
+  }
 
   // Direct refs for fluid, non-blocking inline editing that never loses mobile keypad focus
   const inlineEditRef = useRef(null)
@@ -147,6 +164,7 @@ export default function TemplateMixer({
         setActivePalette({ name: 'Custom Palette', acc: inv.themeColor, ink: '#151A2D' })
       }
       if (inv.status) setDocStatus(inv.status.toLowerCase() === 'paid' ? 'paid' : 'sent')
+      setCuDocType(inv.docType === 'quotation' ? 'quote' : (inv.docType || 'invoice'))
 
       const bizName = inv.seller?.name || s.biz || ''
       const bizCity = [inv.seller?.address, inv.seller?.city, inv.seller?.state].filter(Boolean).join(', ') || s.city || ''
@@ -163,20 +181,20 @@ export default function TemplateMixer({
       setCuClient(clientName)
       setCuCcity(clientCity)
       setCuCg(clientGstin)
-      setCuNo(inv.invoiceNumber || s.invoiceNumber || '')
+      setCuNo(inv.invoiceNumber || inv.quoteNumber || s.invoiceNumber || '')
       if (inv.invoiceDate) setCuDate(inv.invoiceDate)
-      if (inv.dueDate) setCuDue(inv.dueDate)
+      if (inv.dueDate || inv.validUntil) setCuDue(inv.dueDate || inv.validUntil)
 
-      const bankName = inv.paymentDetails?.bankName || (s.bank ? s.bank[0] : 'HDFC Bank Ltd')
-      const acNum = inv.paymentDetails?.accountNumber || (s.bank ? s.bank[1] : '50200012345678')
-      const ifscCode = inv.paymentDetails?.ifsc || (s.bank ? s.bank[2] : 'HDFC0000240')
-      const upi = inv.paymentDetails?.upiId || s.upi || 'pay@upi'
+      const bankName = inv.paymentDetails?.bankName || (businessProfile.bankName !== undefined ? businessProfile.bankName : s.bank?.[0] || '')
+      const acNum = inv.paymentDetails?.accountNumber || (businessProfile.accountNumber !== undefined ? businessProfile.accountNumber : s.bank?.[1] || '')
+      const ifscCode = inv.paymentDetails?.ifsc || (businessProfile.ifsc !== undefined ? businessProfile.ifsc : s.bank?.[2] || '')
+      const upi = inv.paymentDetails?.upiId || (businessProfile.upiId !== undefined ? businessProfile.upiId : s.upi || '')
 
       setCuBank(bankName)
       setCuAc(acNum)
       setCuIfsc(ifscCode)
       setCuUpi(upi)
-      setUpiQrUrl(inv.paymentDetails?.upiQrUrl || inv.upiQrUrl || s.qrImg || null)
+      setUpiQrUrl(inv.paymentDetails?.upiQrUrl || inv.upiQrUrl || (businessProfile.upiQrUrl !== undefined ? businessProfile.upiQrUrl || null : s.qrImg || null))
       setReviewQrUrl(inv.reviewQrUrl || s.reviewQrImg || null)
 
       if (inv.items && inv.items.length > 0) {
@@ -216,8 +234,14 @@ export default function TemplateMixer({
       if (bizName) {
         setBaseStarterName(`Editing: ${bizName}`)
       }
+    } else {
+      setCuBank(businessProfile.bankName ?? initialStyleObj.bank?.[0] ?? '')
+      setCuAc(businessProfile.accountNumber ?? initialStyleObj.bank?.[1] ?? '')
+      setCuIfsc(businessProfile.ifsc ?? initialStyleObj.bank?.[2] ?? '')
+      setCuUpi(businessProfile.upiId ?? initialStyleObj.upi ?? '')
+      setUpiQrUrl(businessProfile.upiQrUrl !== undefined ? businessProfile.upiQrUrl || null : null)
     }
-  }, [invoiceToEdit?.id])
+  }, [invoiceToEdit?.id, businessProfile])
 
   // Snapshot generation for Undo / Redo / Revert to Draft
   const getSnapshot = () => ({
@@ -395,7 +419,7 @@ export default function TemplateMixer({
     if (draft) {
       applySnapshot(draft)
       pushHistory(draft)
-      setSaveSuccessToast('✓ Reverted all changes back to initial draft!')
+      setSaveSuccessToast('Reverted all changes back to the initial draft.')
       setTimeout(() => setSaveSuccessToast(null), 3000)
     }
   }
@@ -408,7 +432,7 @@ export default function TemplateMixer({
       applySnapshot(initialDraftSnapshotRef.current)
       pushHistory(initialDraftSnapshotRef.current)
     }
-    setSaveSuccessToast('✓ Reset layout and design to starter defaults!')
+    setSaveSuccessToast('Reset layout and design to the starter defaults.')
     setTimeout(() => setSaveSuccessToast(null), 3000)
   }
   
@@ -449,6 +473,7 @@ export default function TemplateMixer({
     ...baseStyle,
     ...safeTplStyle,
     isCustomInvoice: userHasCustomBiz,
+    docType: cuDocType,
     biz: cuBiz && cuBiz.trim() ? cuBiz.trim() : (invoiceToEdit?.seller?.name || baseStyle.biz),
     city: cuCity && cuCity.trim() ? cuCity.trim() : ([invoiceToEdit?.seller?.address, invoiceToEdit?.seller?.city, invoiceToEdit?.seller?.state].filter(Boolean).join(', ') || baseStyle.city),
     gstin: cuGstin && cuGstin.trim() ? cuGstin.trim() : (invoiceToEdit?.seller?.gstin || baseStyle.gstin),
@@ -465,11 +490,14 @@ export default function TemplateMixer({
     adv: cuAdv !== undefined ? parseFloat(cuAdv) : (invoiceToEdit?.templateStyle?.adv !== undefined ? invoiceToEdit.templateStyle.adv : (invoiceToEdit?.advancePaid !== undefined ? invoiceToEdit.advancePaid : baseStyle.adv)),
     board: invoiceToEdit?.templateStyle?.board || baseStyle.board,
     notes: cuNotes ? cuNotes.split('\n').filter(Boolean) : (invoiceToEdit?.notes ? (Array.isArray(invoiceToEdit.notes) ? invoiceToEdit.notes : invoiceToEdit.notes.split('\n')) : baseStyle.notes),
-    upi: cuUpi || invoiceToEdit?.paymentDetails?.upiId || baseStyle.upi,
+    upi: cuUpi || invoiceToEdit?.paymentDetails?.upiId || (businessProfile.upiId !== undefined ? businessProfile.upiId : baseStyle.upi || ''),
+    showUpiDetails: Boolean(cuUpi || invoiceToEdit?.paymentDetails?.upiId || upiQrUrl),
+    showBankDetails: Boolean(cuBank || cuAc || cuIfsc || invoiceToEdit?.paymentDetails?.branch || businessProfile.branch),
     bank: [
-      cuBank || invoiceToEdit?.paymentDetails?.bankName || (baseStyle.bank ? baseStyle.bank[0] : 'HDFC Bank Ltd'),
-      cuAc || invoiceToEdit?.paymentDetails?.accountNumber || (baseStyle.bank ? baseStyle.bank[1] : '50200012345678'),
-      cuIfsc || invoiceToEdit?.paymentDetails?.ifsc || (baseStyle.bank ? baseStyle.bank[2] : 'HDFC0000240')
+      cuBank || invoiceToEdit?.paymentDetails?.bankName || (businessProfile.bankName !== undefined ? businessProfile.bankName : baseStyle.bank?.[0] || ''),
+      cuAc || invoiceToEdit?.paymentDetails?.accountNumber || (businessProfile.accountNumber !== undefined ? businessProfile.accountNumber : baseStyle.bank?.[1] || ''),
+      cuIfsc || invoiceToEdit?.paymentDetails?.ifsc || (businessProfile.ifsc !== undefined ? businessProfile.ifsc : baseStyle.bank?.[2] || ''),
+      invoiceToEdit?.paymentDetails?.branch || (businessProfile.branch !== undefined ? businessProfile.branch : baseStyle.bank?.[3] || '')
     ],
     qrImg: upiQrUrl,
     reviewQrImg: reviewQrUrl,
@@ -509,7 +537,7 @@ export default function TemplateMixer({
     msgText: footerCustomMsg,
     art: brandArt,
     v: artVariation,
-    status: docStatus,
+    status: cuDocType === 'invoice' ? docStatus : 'draft',
     occ: festiveOcc,
     seal: verifiedSeal,
     logoImg: logoImgUrl
@@ -739,26 +767,25 @@ export default function TemplateMixer({
 
   // PDF Download using html2pdf
   const handleDownloadPdf = async () => {
-    if (typeof window.html2pdf === 'undefined') {
-      window.print()
-      return
-    }
     setPdfGenerating(true)
     const element = document.createElement('div')
     element.className = 'inv'
     element.style.width = output === 'a4' ? '794px' : output === 'phone' ? '390px' : '300px'
     element.innerHTML = getLatestRenderedHtml()
+    if (!isPro) addFreeInvoiceWatermark(element)
     document.body.appendChild(element)
 
     try {
-      await window.html2pdf().set({
+      const html2pdf = await loadHtml2Pdf()
+      await html2pdf().set({
         margin: 0,
-        filename: `${currentStyle.biz.replace(/\s+/g, '_')}_${layout}_Invoice.pdf`,
+        filename: `${currentStyle.biz.replace(/\s+/g, '_')}_${layout}_${cuDocType === 'quote' ? 'Quotation' : cuDocType === 'estimate' ? 'Estimate' : 'Tax_Invoice'}.pdf`,
         image: { type: 'jpeg', quality: 0.98 },
         html2canvas: { scale: 2, useCORS: true, backgroundColor: '#ffffff' },
         jsPDF: output === 'a4' ? { unit: 'mm', format: 'a4' } : { unit: 'px', format: [output === 'phone' ? 390 : 300, 1100] }
       }).from(element).save()
-    } catch {
+    } catch (error) {
+      console.warn('Invoice PDF download failed; opening the print dialog instead.', error)
       window.print()
     } finally {
       element.remove()
@@ -770,12 +797,14 @@ export default function TemplateMixer({
   const handleConvertQuoteToInvoice = () => {
     setCuDocType('invoice')
     setCuNo(`INV-2026-${String(Math.floor(Math.random() * 900) + 100)}`)
-    setCuNotes(`Converted from Quotation.\nPayment due within 15 days.`)
+    setCuNotes(`Converted from ${cuDocType === 'estimate' ? 'Estimate' : 'Quotation'}.\nPayment due within 15 days.`)
+    setCustomPreviewHtml(null)
   }
 
   // Share via WhatsApp
   const handleShareWhatsApp = () => {
-    const text = `Hello ${cuClient}, here is your ${cuDocType.toUpperCase()} ${cuNo} from ${cuBiz} for ${cuItems.length} item(s). Thank you for your business!`
+    const documentTypeLabel = cuDocType === 'quote' ? 'Quotation' : cuDocType === 'estimate' ? 'Estimate' : 'Tax Invoice'
+    const text = `Hello ${cuClient}, here is your ${documentTypeLabel} ${cuNo} from ${cuBiz} for ${cuItems.length} item(s). Thank you for your business!`
     window.open(`https://wa.me/?text=${encodeURIComponent(text)}`, '_blank')
   }
 
@@ -821,9 +850,15 @@ export default function TemplateMixer({
     return {
       id: invoiceToEdit?.id || `inv_${Date.now()}`,
       invoiceNumber: invNumber,
+      docType: cuDocType,
+      ...(cuDocType !== 'invoice' ? {
+        quoteNumber: invNumber,
+        quoteDate: cuDate || new Date().toISOString().split('T')[0],
+        validUntil: cuDue || new Date(Date.now() + 15 * 86400000).toISOString().split('T')[0]
+      } : {}),
       invoiceDate: s.invoiceDate || new Date().toISOString().split('T')[0],
       dueDate: s.dueDate || new Date(Date.now() + 15 * 86400000).toISOString().split('T')[0],
-      status: docStatus === 'paid' ? 'Paid' : 'Unpaid',
+      status: cuDocType === 'invoice' ? (docStatus === 'paid' ? 'Paid' : 'Unpaid') : 'Draft',
       theme: 'emerald',
       themeColor: activePalette ? activePalette.acc : (s.acc || '#0E5E5A'),
       layout: layout || 'band',
@@ -865,10 +900,11 @@ export default function TemplateMixer({
       notes: Array.isArray(s.notes) ? s.notes.join('\n') : (s.notes || 'Thank you for your business. Please make payments before the due date.'),
       terms: 'Payment due within 15 days of invoice date. 18% p.a. interest applicable on late payments.',
       paymentDetails: {
-        bankName: (s.bank ? s.bank[0] : 'HDFC Bank Ltd'),
-        accountNumber: (s.bank ? s.bank[1] : '50200012345678'),
-        ifsc: (s.bank ? s.bank[2] : 'HDFC0000240'),
-        upiId: s.upi || 'pay@upi',
+        bankName: s.bank?.[0] || '',
+        accountNumber: s.bank?.[1] || '',
+        ifsc: s.bank?.[2] || '',
+        branch: invoiceToEdit?.paymentDetails?.branch || (businessProfile.branch !== undefined ? businessProfile.branch : s.bank?.[3] || ''),
+        upiId: s.upi || '',
         upiQrUrl
       },
       upiQrUrl,
@@ -884,34 +920,29 @@ export default function TemplateMixer({
   // Handle Save Invoice directly from Mixer
   const handleSaveInvoice = async () => {
     setIsSaving(true)
+    setSaveSuccessToast(null)
     const newInvoice = buildInvoiceFromCurrentMixer()
 
-    if (onSaveInvoice) {
-      onSaveInvoice(newInvoice)
-    }
-
     try {
-      const stored = JSON.parse(localStorage.getItem('invoxa_invoices') || '[]')
-      const updated = [newInvoice, ...stored.filter(i => i.id !== newInvoice.id)]
-      localStorage.setItem('invoxa_invoices', JSON.stringify(updated))
-      
-      const token = localStorage.getItem('invoxa_token')
-      if (token) {
-        if (invoiceToEdit && invoiceToEdit.id) {
-          api.updateInvoice(newInvoice.id, newInvoice).catch(() => {})
-        } else {
-          api.createInvoice(newInvoice).catch(() => {})
-        }
-      }
+      const saveResult = onSaveInvoice ? await onSaveInvoice(newInvoice) : null
+      const documentTypeLabel = cuDocType === 'quote' ? 'Quotation' : cuDocType === 'estimate' ? 'Estimate' : 'Invoice'
+      setSaveSuccessToast({
+        tone: saveResult?.tone || (saveResult?.savedToAccount === false && cuDocType === 'invoice' ? 'warning' : 'success'),
+        message: saveResult?.message || (saveResult?.savedToAccount === false && cuDocType === 'invoice'
+          ? `Invoice ${newInvoice.invoiceNumber} is saved in this browser only. Sign in to sync it to your account.`
+          : `${documentTypeLabel} ${newInvoice.invoiceNumber} (${newInvoice.seller.name}) saved successfully!`),
+        invoiceNumber: newInvoice.invoiceNumber,
+        docType: cuDocType
+      })
     } catch (err) {
-      console.warn('Local save note:', err.message)
+      setSaveSuccessToast({
+        tone: 'error',
+        message: err.message || 'Invoice could not be saved. Please try again.',
+        invoiceNumber: newInvoice.invoiceNumber
+      })
+    } finally {
+      setIsSaving(false)
     }
-
-    setIsSaving(false)
-    setSaveSuccessToast({
-      message: `Invoice ${newInvoice.invoiceNumber} (${newInvoice.seller.name}) saved successfully!`,
-      invoiceNumber: newInvoice.invoiceNumber
-    })
 
     setTimeout(() => {
       setSaveSuccessToast(null)
@@ -959,7 +990,11 @@ export default function TemplateMixer({
           position: 'sticky',
           top: 10,
           zIndex: 9999,
-          background: 'linear-gradient(135deg, #15865a, #059669)',
+          background: saveSuccessToast.tone === 'error'
+            ? 'linear-gradient(135deg, #b91c1c, #dc2626)'
+            : saveSuccessToast.tone === 'warning'
+            ? 'linear-gradient(135deg, #b45309, #d97706)'
+            : 'linear-gradient(135deg, #15865a, #059669)',
           color: '#ffffff',
           padding: '12px 18px',
           borderRadius: 10,
@@ -967,13 +1002,17 @@ export default function TemplateMixer({
           display: 'flex',
           alignItems: 'center',
           justifyContent: 'space-between',
-          boxShadow: '0 6px 20px rgba(21,134,90,0.3)',
+          boxShadow: saveSuccessToast.tone === 'error'
+            ? '0 6px 20px rgba(185,28,28,0.25)'
+            : '0 6px 20px rgba(21,134,90,0.3)',
           animation: 'slideDown 0.3s ease-out'
         }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-            <span style={{ fontSize: '1.4rem' }}>✅</span>
+            <Icon name={saveSuccessToast.tone === 'error' ? 'info' : 'checkCircle'} size={20} />
             <div>
-              <strong style={{ display: 'block', fontSize: '0.95rem' }}>Invoice Saved!</strong>
+              <strong style={{ display: 'block', fontSize: '0.95rem' }}>
+                {saveSuccessToast.tone === 'error' ? 'Save failed' : saveSuccessToast.tone === 'warning' ? 'Saved in this browser' : `${saveSuccessToast.docType === 'quote' ? 'Quotation' : saveSuccessToast.docType === 'estimate' ? 'Estimate' : 'Invoice'} Saved!`}
+              </strong>
               <span style={{ fontSize: '0.85rem', opacity: 0.95 }}>{saveSuccessToast.message}</span>
             </div>
           </div>
@@ -981,7 +1020,7 @@ export default function TemplateMixer({
             {onNavigateToInvoices && (
               <button
                 type="button"
-                onClick={onNavigateToInvoices}
+                onClick={() => onNavigateToInvoices(saveSuccessToast.docType)}
                 style={{
                   background: '#ffffff',
                   color: '#15865a',
@@ -994,7 +1033,7 @@ export default function TemplateMixer({
                   boxShadow: '0 2px 6px rgba(0,0,0,0.1)'
                 }}
               >
-                View in Invoices →
+                View in {saveSuccessToast.docType === 'quote' || saveSuccessToast.docType === 'estimate' ? 'Quotations' : 'Invoices'} <Icon name="arrowUpRight" size={14} />
               </button>
             )}
             <button
@@ -1023,7 +1062,7 @@ export default function TemplateMixer({
             <button
               type="button"
               className="chip"
-              onClick={onNavigateToInvoices}
+              onClick={() => onNavigateToInvoices(cuDocType)}
               style={{
                 marginBottom: 10,
                 background: '#ffffff',
@@ -1039,7 +1078,7 @@ export default function TemplateMixer({
                 boxShadow: '0 1px 4px rgba(0,0,0,0.06)'
               }}
             >
-              ← Back to Invoices
+              <Icon name="arrowLeft" size={14} /> Back to {cuDocType === 'quote' || cuDocType === 'estimate' ? 'Quotations' : 'Invoices'}
             </button>
           )}
           <span className="label">Dynamic Design Engine</span>
@@ -1081,14 +1120,14 @@ export default function TemplateMixer({
           className={`mmt-btn ${mobileMixerTab === 'controls' ? 'active' : ''}`}
           onClick={() => setMobileMixerTab('controls')}
         >
-          ⚙️ Customize &amp; Starters
+           Customize &amp; Starters
         </button>
         <button
           type="button"
           className={`mmt-btn ${mobileMixerTab === 'stage' ? 'active' : ''}`}
           onClick={() => setMobileMixerTab('stage')}
         >
-          👁 Live Invoice Preview
+           Live Invoice Preview
         </button>
       </div>
 
@@ -1239,7 +1278,7 @@ export default function TemplateMixer({
                 </div>
                 <div className="upload">
                   <label className="btn-upload" htmlFor="logoUploader">
-                    ⬆ Upload logo
+                     Upload logo
                   </label>
                   <input
                     type="file"
@@ -1567,7 +1606,7 @@ export default function TemplateMixer({
                     className="chip new"
                     onClick={() => setArtVariation(v => v + 1)}
                   >
-                    ↻ New variation
+                    <Icon name="sparkles" size={15} /> New variation
                   </button>
                 </div>
               </div>
@@ -1654,7 +1693,7 @@ export default function TemplateMixer({
               boxShadow: '0 2px 6px rgba(37,99,235,0.08)'
             }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                <span style={{ fontSize: '1.3rem' }}>✏️</span>
+                <Icon name="edit" size={16} />
                 <div>
                   <strong style={{ display: 'block', fontSize: '0.92rem' }}>Editing Saved Invoice:</strong>
                   <span style={{ fontSize: '0.84rem', color: '#3b82f6' }}>
@@ -1716,7 +1755,7 @@ export default function TemplateMixer({
                   title="Revert back to initial draft"
                   style={{ color: '#dc2626', fontWeight: 600, padding: '4px 10px', fontSize: '13px' }}
                 >
-                  ↺ Revert to Draft
+                  <Icon name="clock" size={15} /> Revert to Draft
                 </button>
                 <button
                   className="chip"
@@ -1733,20 +1772,21 @@ export default function TemplateMixer({
           {/* Action Steps Bar */}
           <div id="actBar" style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
             <button className="chip" onClick={() => { setModalStep(1); setModalOpen(true); }}>
-              ✎ 1 Fill details
+              <Icon name="edit" size={15} /> 1 Fill details
             </button>
             <button className="chip" onClick={() => { setModalStep(2); setModalOpen(true); }}>
-              👁 2 Preview &amp; Edit
+              <Icon name="fileText" size={15} /> 2 Preview &amp; Edit
             </button>
             <button
               className="chip cuPri"
               onClick={handleDownloadPdf}
               disabled={pdfGenerating}
             >
-              {pdfGenerating ? '⏳ Generating PDF…' : '⬇ Download PDF'}
+              <Icon name={pdfGenerating ? 'clock' : 'download'} size={15} />
+              {pdfGenerating ? 'Generating PDF…' : 'Download PDF'}
             </button>
             <button
-              className="chip"
+              className="chip mixer-inline-save"
               onClick={handleSaveInvoice}
               disabled={isSaving}
               style={{
@@ -1764,16 +1804,25 @@ export default function TemplateMixer({
               }}
               title="Save this invoice to your list of invoices"
             >
-              <span>💾</span> {isSaving ? 'Saving…' : 'Save Invoice'}
+              <Icon name={isSaving ? 'clock' : 'checkCircle'} size={15} />
+              {isSaving ? 'Saving…' : 'Save Invoice'}
             </button>
+            {!isPro && <button type="button" className="chip template-watermark-upgrade" onClick={requestWatermarkUpgrade}>Remove watermark · Upgrade</button>}
           </div>
 
           {/* Live Rendered Invoice */}
-          <div
-            ref={stageRef}
-            className="inv"
-            dangerouslySetInnerHTML={{ __html: renderedHtml }}
-          />
+          <div className="template-mixer-invoice-frame">
+            <div
+              ref={stageRef}
+              className={`inv${!isPro ? ' invoice-has-watermark' : ''}`}
+              dangerouslySetInnerHTML={{ __html: renderedHtml }}
+            />
+            {!isPro && (
+              <div className="invoice-free-plan-watermark template-mixer-watermark">
+                <button type="button" className="no-print" data-html2canvas-ignore="true" onClick={requestWatermarkUpgrade}>Remove watermark</button>
+              </div>
+            )}
+          </div>
 
           <div className="combo">
             {output.toUpperCase()} · {LAYOUTS.find(x => x[0] === layout)?.[1]} Layout · {tableStyle} table · {paperFinish} finish · Generated with Invoxa Engine
@@ -1810,7 +1859,8 @@ export default function TemplateMixer({
                   }}
                   title={modalStep === 2 ? 'Back to Fill Details' : 'Back to Templates'}
                 >
-                  {modalStep === 2 ? '← Edit details' : '← Back to Templates'}
+                  <Icon name="arrowLeft" size={15} />
+                  {modalStep === 2 ? 'Edit details' : 'Back to Templates'}
                 </button>
                 <b style={{ fontSize: '0.95rem' }}>{modalStep === 1 ? '1 Fill details' : '2 Preview & Edit'}</b>
               </div>
@@ -1836,7 +1886,8 @@ export default function TemplateMixer({
                   }}
                   title="Save Invoice"
                 >
-                  <span>💾</span> {isSaving ? '…' : 'Save'}
+                  <Icon name={isSaving ? 'clock' : 'checkCircle'} size={15} />
+                  {isSaving ? 'Saving' : 'Save'}
                 </button>
 
                 {modalStep === 1 ? (
@@ -1847,7 +1898,7 @@ export default function TemplateMixer({
                     style={{ fontWeight: 700, padding: '5px 12px', fontSize: '13px' }}
                     title="Go to Step 2: Preview & Edit"
                   >
-                    2 Preview →
+                    2 Preview <Icon name="arrowUpRight" size={14} />
                   </button>
                 ) : (
                   <button
@@ -1858,7 +1909,8 @@ export default function TemplateMixer({
                     style={{ fontWeight: 700, padding: '5px 12px', fontSize: '13px' }}
                     title="Download PDF"
                   >
-                    {pdfGenerating ? '⏳…' : '⬇ Download PDF'}
+                    <Icon name={pdfGenerating ? 'clock' : 'download'} size={15} />
+                    {pdfGenerating ? 'Generating' : 'Download PDF'}
                   </button>
                 )}
 
@@ -1869,7 +1921,7 @@ export default function TemplateMixer({
                   title="Close modal"
                   style={{ fontWeight: 700, padding: '4px 8px', fontSize: '13px' }}
                 >
-                  ✕
+                  <Icon name="x" size={16} />
                 </button>
               </div>
             </div>
@@ -1881,7 +1933,7 @@ export default function TemplateMixer({
                   <label>Document Type</label>
                   <select
                     value={cuDocType}
-                    onChange={(e) => setCuDocType(e.target.value)}
+                    onChange={(e) => handleMixerDocumentTypeChange(e.target.value)}
                   >
                     <option value="invoice">Tax Invoice</option>
                     <option value="quote">Quotation</option>
@@ -1898,7 +1950,7 @@ export default function TemplateMixer({
                   marginBottom: 16
                 }}>
                   <div style={{ fontWeight: 700, fontSize: '0.95rem', color: '#0f172a', marginBottom: 12, display: 'flex', alignItems: 'center', gap: 6 }}>
-                    <span>🎨</span> Logo, Company Seal &amp; Signature
+                    Logo, Company Seal &amp; Signature
                   </div>
 
                   <div style={{
@@ -1909,7 +1961,7 @@ export default function TemplateMixer({
                     {/* 1. Upload Logo */}
                     <div style={{ background: '#f8fafc', padding: 12, borderRadius: 10, border: '1px solid #e2e8f0' }}>
                       <label style={{ fontWeight: 600, fontSize: '0.82rem', color: '#334155', display: 'block', marginBottom: 6 }}>
-                        🏢 Company Logo
+                         Company Logo
                       </label>
                       {logoImgUrl ? (
                         <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
@@ -1919,7 +1971,7 @@ export default function TemplateMixer({
                             style={{ width: 48, height: 48, objectFit: 'contain', background: '#fff', borderRadius: 8, border: '1px solid #cbd5e1', padding: 4 }}
                           />
                           <div>
-                            <span style={{ fontSize: '0.78rem', color: '#15865a', fontWeight: 600, display: 'block' }}>✓ Logo Uploaded</span>
+                            <span style={{ fontSize: '0.78rem', color: '#15865a', fontWeight: 600, display: 'flex', alignItems: 'center', gap: 4 }}><Icon name="checkCircle" size={14} /> Logo uploaded</span>
                             <button
                               type="button"
                               className="chip"
@@ -1952,7 +2004,7 @@ export default function TemplateMixer({
                               cursor: 'pointer'
                             }}
                           >
-                            <span>⬆</span> Upload Logo Image
+                            Upload Logo Image
                           </label>
                           <input
                             id="cuModalLogoUpload"
@@ -1972,7 +2024,7 @@ export default function TemplateMixer({
                     <div style={{ background: '#f8fafc', padding: 12, borderRadius: 10, border: '1px solid #e2e8f0' }}>
                       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 }}>
                         <label style={{ fontWeight: 600, fontSize: '0.82rem', color: '#334155', margin: 0 }}>
-                          💮 Company Seal / Stamp
+                           Company Seal / Stamp
                         </label>
                         <span style={{ fontSize: '0.72rem', color: '#64748b' }}>Circular Seal</span>
                       </div>
@@ -2013,14 +2065,14 @@ export default function TemplateMixer({
                           }}
                           style={{ width: 'auto', margin: 0 }}
                         />
-                        <span>✓ Tamper-Proof Verification Seal</span>
+                        <span style={{ display: 'inline-flex', alignItems: 'center', gap: 5 }}><Icon name="shieldCheck" size={15} /> Tamper-Proof Verification Seal</span>
                       </label>
                     </div>
 
                     {/* 3. Signature */}
                     <div style={{ background: '#f8fafc', padding: 12, borderRadius: 10, border: '1px solid #e2e8f0' }}>
                       <label style={{ fontWeight: 600, fontSize: '0.82rem', color: '#334155', display: 'block', marginBottom: 6 }}>
-                        ✍️ Signature Style &amp; Sign
+                         Signature Style &amp; Sign
                       </label>
                       <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginBottom: 8 }}>
                         {SIGS.map(([id, n]) => (
@@ -2082,7 +2134,7 @@ export default function TemplateMixer({
                                     cursor: 'pointer'
                                   }}
                                 >
-                                  📷 Upload Sign Image
+                                   Upload Sign Image
                                 </label>
                                 <input
                                   id="cuModalSigUpload"
@@ -2160,11 +2212,11 @@ export default function TemplateMixer({
                     <input value={cuNo} onChange={e => setCuNo(e.target.value)} />
                   </div>
                   <div>
-                    <label>Invoice Date</label>
+                    <label>{cuDocType === 'quote' ? 'Quotation Date' : cuDocType === 'estimate' ? 'Estimate Date' : 'Invoice Date'}</label>
                     <input type="date" value={cuDate} onChange={e => setCuDate(e.target.value)} />
                   </div>
                   <div>
-                    <label>Due Date / Valid Until</label>
+                    <label>{cuDocType === 'invoice' ? 'Payment Due Date' : 'Valid Until'}</label>
                     <input type="date" value={cuDue} onChange={e => { setCuDue(e.target.value); setCustomPreviewHtml(null); }} />
                   </div>
                   <div>
@@ -2194,7 +2246,8 @@ export default function TemplateMixer({
                             <small style={{ flex: 1, color: '#64748b', fontSize: '0.72rem' }}>No custom QR uploaded</small>
                           )}
                           <div style={{ display: 'flex', flexDirection: 'column', gap: 5 }}>
-                            <label htmlFor={qrField.id} style={{ cursor: 'pointer', color: '#0284c7', fontSize: '0.75rem', fontWeight: 700 }}>
+                            <label htmlFor={qrField.id} style={{ cursor: 'pointer', color: '#0284c7', fontSize: '0.75rem', fontWeight: 700, display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+                              <Icon name={qrField.value ? 'image' : 'upload'} size={14} />
                               {qrField.value ? 'Replace image' : 'Upload image'}
                             </label>
                             <input id={qrField.id} type="file" accept="image/*" style={{ display: 'none' }} onChange={e => handleQrUpload(e, qrField.setValue, qrField.isReview)} />
@@ -2300,23 +2353,30 @@ export default function TemplateMixer({
                 <p className="muted" style={{ marginBottom: 12, fontSize: '0.85rem' }}>
                   Tap any text directly on the preview to edit it inline before downloading your PDF.
                 </p>
-                <div
-                  key="cu-inv-editable-preview"
-                  ref={inlineEditRef}
-                  id="cuInv"
-                  className="inv"
-                  contentEditable
-                  suppressContentEditableWarning
-                  onFocus={() => { isTypingInlineRef.current = true }}
-                  onBlur={(e) => {
-                    isTypingInlineRef.current = false
-                    latestInlineHtmlRef.current = e.currentTarget.innerHTML
-                    setCustomPreviewHtml(e.currentTarget.innerHTML)
-                  }}
-                  onInput={(e) => {
-                    latestInlineHtmlRef.current = e.currentTarget.innerHTML
-                  }}
-                />
+                <div className="template-mixer-invoice-frame">
+                  <div
+                    key="cu-inv-editable-preview"
+                    ref={inlineEditRef}
+                    id="cuInv"
+                    className={`inv${!isPro ? ' invoice-has-watermark' : ''}`}
+                    contentEditable
+                    suppressContentEditableWarning
+                    onFocus={() => { isTypingInlineRef.current = true }}
+                    onBlur={(e) => {
+                      isTypingInlineRef.current = false
+                      latestInlineHtmlRef.current = e.currentTarget.innerHTML
+                      setCustomPreviewHtml(e.currentTarget.innerHTML)
+                    }}
+                    onInput={(e) => {
+                      latestInlineHtmlRef.current = e.currentTarget.innerHTML
+                    }}
+                  />
+                  {!isPro && (
+                    <div className="invoice-free-plan-watermark template-mixer-watermark">
+                      <button type="button" className="no-print" data-html2canvas-ignore="true" onClick={requestWatermarkUpgrade}>Remove watermark</button>
+                    </div>
+                  )}
+                </div>
               </div>
             )}
 
@@ -2335,7 +2395,7 @@ export default function TemplateMixer({
                     }}
                     style={{ fontWeight: 700, background: '#f8fafc', border: '1px solid #cbd5e1' }}
                   >
-                    ← Edit details
+                    <Icon name="arrowLeft" size={15} /> Edit details
                   </button>
                 ) : (
                   <button
@@ -2344,7 +2404,7 @@ export default function TemplateMixer({
                     onClick={() => setModalOpen(false)}
                     style={{ fontWeight: 700, background: '#f8fafc', border: '1px solid #cbd5e1' }}
                   >
-                    ← Back to Templates
+                    <Icon name="arrowLeft" size={15} /> Back to Templates
                   </button>
                 )}
                 <button
@@ -2353,7 +2413,7 @@ export default function TemplateMixer({
                   disabled={!canUndo}
                   title="Undo last change"
                 >
-                  ↶ Undo
+                  <Icon name="undo" size={15} /> Undo
                 </button>
                 <button
                   className="chip"
@@ -2361,7 +2421,7 @@ export default function TemplateMixer({
                   disabled={!canRedo}
                   title="Redo change"
                 >
-                  ↷ Redo
+                  <Icon name="redo" size={15} /> Redo
                 </button>
                 <button
                   className="chip"
@@ -2369,7 +2429,7 @@ export default function TemplateMixer({
                   title="Revert back to initial draft"
                   style={{ color: '#dc2626' }}
                 >
-                  ↺ Revert
+                  <Icon name="clock" size={15} /> Revert
                 </button>
               </div>
 
@@ -2390,7 +2450,8 @@ export default function TemplateMixer({
                       padding: '7px 14px'
                     }}
                   >
-                    <span>💾</span> {isSaving ? 'Saving…' : 'Save Invoice'}
+                    <Icon name={isSaving ? 'clock' : 'checkCircle'} size={15} />
+                    {isSaving ? 'Saving…' : 'Save Invoice'}
                   </button>
                 )}
                 {modalStep === 1 && (
@@ -2400,17 +2461,17 @@ export default function TemplateMixer({
                     onClick={() => setModalStep(2)}
                     style={{ fontWeight: 700, padding: '7px 14px' }}
                   >
-                    2 Preview &amp; Edit →
+                    2 Preview &amp; Edit <Icon name="arrowUpRight" size={14} />
                   </button>
                 )}
                 {modalStep === 2 && cuDocType !== 'invoice' && (
                   <button type="button" className="chip" onClick={handleConvertQuoteToInvoice}>
-                    ↻ Convert to Invoice
+                    <Icon name="fileCheck" size={15} /> Convert to Invoice
                   </button>
                 )}
                 {modalStep === 2 && (
                   <button type="button" className="chip" onClick={handleShareWhatsApp}>
-                    💬 Share on WhatsApp
+                    <Icon name="message" size={15} /> Share on WhatsApp
                   </button>
                 )}
                 {modalStep === 2 && (
@@ -2429,7 +2490,8 @@ export default function TemplateMixer({
                       padding: '7px 14px'
                     }}
                   >
-                    <span>💾</span> {isSaving ? 'Saving…' : 'Save Invoice'}
+                    <Icon name={isSaving ? 'clock' : 'checkCircle'} size={15} />
+                    {isSaving ? 'Saving…' : 'Save Invoice'}
                   </button>
                 )}
                 {modalStep === 2 && (
@@ -2440,7 +2502,8 @@ export default function TemplateMixer({
                     disabled={pdfGenerating}
                     style={{ fontWeight: 700, padding: '7px 14px' }}
                   >
-                    {pdfGenerating ? '⏳ Generating…' : '⬇ Download PDF'}
+                    <Icon name={pdfGenerating ? 'clock' : 'download'} size={15} />
+                    {pdfGenerating ? 'Generating…' : 'Download PDF'}
                   </button>
                 )}
               </div>

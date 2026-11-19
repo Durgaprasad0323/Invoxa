@@ -694,6 +694,47 @@
 .inv {
   container-type: inline-size;
   width: 100%;
+  position: relative;
+}
+
+.template-mixer-view,
+.mixer,
+.ctrl,
+.stage {
+  min-width: 0;
+}
+
+.ctrl,
+.stage {
+  box-sizing: border-box;
+}
+
+.stage {
+  width: 100%;
+  max-width: 100%;
+  overflow-x: hidden;
+}
+
+.template-mixer-invoice-frame {
+  width: 100%;
+  max-width: 600px;
+  min-width: 0;
+  margin-inline: auto;
+  box-sizing: border-box;
+}
+
+.template-mixer-invoice-frame > .inv,
+.template-mixer-invoice-frame > #cuInv,
+.template-mixer-invoice-frame .ii {
+  width: 100%;
+  max-width: 100%;
+  min-width: 0;
+  box-sizing: border-box;
+}
+
+#cuModal .cuBd-preview {
+  min-width: 0;
+  overflow-x: hidden;
 }
 
 .ii {
@@ -2172,3 +2213,4 @@
     justify-content: flex-end;
   }
 }
+

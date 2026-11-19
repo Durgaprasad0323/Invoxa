@@ -1,5 +1,6 @@
 import React from 'react'
 import InvoiceGenerator from './InvoiceGenerator'
+import Icon from './ui/Icon'
 
 export default function LandingPage({
   onInvoiceGenerated,
@@ -9,32 +10,32 @@ export default function LandingPage({
 }) {
   const features = [
     {
-      icon: '✦',
+      icon: 'sparkles',
       title: 'AI Invoice Generator',
       description: 'Create professional GST invoices from simple text, photos, voice notes, and customer messages.'
     },
     {
-      icon: '₹',
+      icon: 'wallet',
       title: 'Smart GST Assistant',
       description: 'Calculate CGST, SGST & IGST automatically and check invoice details for common tax errors.'
     },
     {
-      icon: '▤',
+      icon: 'layout',
       title: 'Professional Templates',
       description: 'Choose from modern, clean templates optimized for Indian businesses and global clients.'
     },
     {
-      icon: '⌘',
+      icon: 'code',
       title: 'HSN / SAC Suggestions',
       description: 'Get automated HSN and SAC code recommendations for your products and service lines.'
     },
     {
-      icon: '◷',
+      icon: 'clock',
       title: 'Payment Tracking',
       description: 'Keep track of paid, pending, and overdue invoices in one unified dashboard.'
     },
     {
-      icon: '▧',
+      icon: 'download',
       title: 'Instant PDF Export',
       description: 'Download crisp, high-resolution tax invoice PDFs ready to email or WhatsApp directly.'
     }
@@ -57,7 +58,7 @@ export default function LandingPage({
       <section className="hero-section" id="home">
         <div className="hero-content">
           <div className="announcement">
-            <span>✦</span> Smart invoicing powered by AI
+            <Icon name="sparkles" size={15} /> Smart invoicing powered by AI
           </div>
 
           <h1>
@@ -73,7 +74,7 @@ export default function LandingPage({
 
           <div className="hero-buttons">
             <a href="#ai-generator" className="primary-btn">
-              Create Invoice <span>→</span>
+              Create Invoice <Icon name="arrowUpRight" size={16} />
             </a>
             <button
               type="button"
@@ -85,16 +86,16 @@ export default function LandingPage({
           </div>
 
           <div className="hero-trust">
-            <span>✓ Instant Auto GST Calculation</span>
-            <span>✓ Undo & Revert Editing</span>
-            <span>✓ One-Click PDF Export</span>
+            <span><Icon name="checkCircle" size={15} /> Instant Auto GST Calculation</span>
+            <span><Icon name="checkCircle" size={15} /> Undo &amp; Revert Editing</span>
+            <span><Icon name="checkCircle" size={15} /> One-Click PDF Export</span>
           </div>
         </div>
 
         {/* HERO VISUAL PREVIEW CARD */}
         <div className="hero-visual">
           <div className="floating-label label-one">
-            <span>✦</span> AI Powered
+              <Icon name="sparkles" size={15} /> AI Powered
           </div>
 
           <div className="invoice-card" onClick={onOpenDashboard} style={{ cursor: 'pointer' }} title="Click to view in dashboard">
@@ -149,13 +150,13 @@ export default function LandingPage({
             </div>
 
             <div className="invoice-footer">
-              <span>✦ Generated with Invoxa AI</span>
+              <span><Icon name="sparkles" size={14} /> Generated with Invoxa AI</span>
               <span>PDF Ready</span>
             </div>
           </div>
 
           <div className="floating-label label-two">
-            <span>✓</span> GST Calculated
+            <Icon name="checkCircle" size={16} /> GST Calculated
           </div>
         </div>
       </section>
@@ -174,10 +175,10 @@ export default function LandingPage({
         <div className="features-grid">
           {features.map((feature, index) => (
             <div className="feature-card" key={index}>
-              <div className="feature-icon">{feature.icon}</div>
+              <div className="feature-icon"><Icon name={feature.icon} size={22} /></div>
               <h3>{feature.title}</h3>
               <p>{feature.description}</p>
-              <a href="#ai-generator">Try now →</a>
+              <a href="#ai-generator">Try now <Icon name="arrowUpRight" size={14} /></a>
             </div>
           ))}
         </div>
@@ -222,9 +223,9 @@ export default function LandingPage({
         <div className="industry-grid">
           {industries.map((industry, index) => (
             <div className="industry-card" key={index}>
-              <span>✦</span>
+              <Icon name="sparkles" size={15} />
               {industry}
-              <span className="industry-arrow">↗</span>
+              <span className="industry-arrow"><Icon name="arrowUpRight" size={15} /></span>
             </div>
           ))}
         </div>
@@ -238,7 +239,7 @@ export default function LandingPage({
           <p>Make your business billing and GST management 10x faster with Invoxa.</p>
         </div>
         <a href="#ai-generator" className="cta-button">
-          Create Invoice Now →
+          Create Invoice Now <Icon name="arrowUpRight" size={16} />
         </a>
       </section>
 
@@ -251,7 +252,7 @@ export default function LandingPage({
 
         <p>Smarter invoicing. Simpler business.</p>
 
-        <span>© 2026 Invoxa. All rights reserved.</span>
+        <span> 2026 Invoxa. All rights reserved.</span>
       </footer>
     </div>
   )

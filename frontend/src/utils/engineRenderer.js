@@ -574,7 +574,7 @@ export function fmtOf(t) {
   }
 
   const docTitle = t.docType
-    ? (t.docType === 'quote' ? 'Quotation' : t.docType === 'estimate' ? 'Estimate' : 'Tax Invoice')
+    ? (['quote', 'quotation'].includes(t.docType) ? 'Quotation' : t.docType === 'estimate' ? 'Estimate' : 'Tax Invoice')
     : (baseF.doc || "Tax Invoice");
 
   const defaultMeta = [
@@ -607,7 +607,7 @@ export function fmtOf(t) {
     ...baseF,
     ...customClean,
     doc: isCustomBiz
-      ? (t.docType === 'quote' ? 'Quotation' : t.docType === 'estimate' ? 'Estimate' : 'Tax Invoice')
+      ? (['quote', 'quotation'].includes(t.docType) ? 'Quotation' : t.docType === 'estimate' ? 'Estimate' : 'Tax Invoice')
       : docTitle,
     parties,
     meta,
@@ -692,11 +692,12 @@ export function renderA4(t, o = {}) {
   const qd = o.qr === "brand" || o.qr === "dots" ? (lum(pal.acc) < .3 ? pal.acc : pal.ink) : "#14161C";
   const qrCustom = o.qrImg || t.qrImg || t.upiQrUrl;
   const reviewQrCustom = o.reviewQrImg || t.reviewQrImg || t.reviewQrUrl;
-  const pay = `<div class="py">${qrCustom ? `<div style="width:48px;height:48px;min-width:48px;display:flex;align-items:center;justify-content:center;background:#fff;border-radius:6px;border:1px solid #cbd5e1;overflow:hidden;padding:2px;box-sizing:border-box;"><img src="${qrCustom}" alt="UPI QR" style="width:100%;height:100%;object-fit:contain;display:block;" /></div>` : qr((t.id || "inv") + (o.l || "band"), { dark: qd, style: o.qr === "dots" ? "dots" : "classic", logoTxt: t.logo || "IN", logoImg: o.logoImg })}<div><b>${EN.pay}</b><div class="sm">${t.upi || "pay@upi"}</div></div></div>`;
+  const pay = t.showUpiDetails === false ? "" : `<div class="py">${qrCustom ? `<div style="width:48px;height:48px;min-width:48px;display:flex;align-items:center;justify-content:center;background:#fff;border-radius:6px;border:1px solid #cbd5e1;overflow:hidden;padding:2px;box-sizing:border-box;"><img src="${qrCustom}" alt="UPI QR" style="width:100%;height:100%;object-fit:contain;display:block;" /></div>` : qr((t.id || "inv") + (o.l || "band"), { dark: qd, style: o.qr === "dots" ? "dots" : "classic", logoTxt: t.logo || "IN", logoImg: o.logoImg })}<div><b>${EN.pay}</b>${t.upi ? `<div class="sm">${t.upi}</div>` : ""}</div></div>`;
   const details = `<div class="dt">${F.meta.map(m => `<div><span>${m[0]}</span>${m[1]}</div>`).join("")}<div><span>Due date</span>${t.dueDate || "19 Nov 2026"}</div>${lvl === 2 ? `<div><span>Supply type</span>${t.intra !== false ? "Intra-state" : "Inter-state"}</div>` : ""}</div>`;
   const hsnT = (lvl && F.hsnSum) || lvl === 2 ? `<div class="hsnw"><div class="lb">HSN / SAC summary</div><table class="hsnt"><thead><tr><th>HSN/SAC</th><th class="r">Taxable</th><th class="r">Rate</th>${t.intra !== false ? '<th class="r">CGST</th><th class="r">SGST</th>' : '<th class="r">IGST</th>'}<th class="r">Total tax</th></tr></thead><tbody>${c.hsn.map(h => `<tr><td>${h.hsn}</td><td class="r num">${fmt2(h.taxable)}</td><td class="r num">${h.gst}%</td>${t.intra !== false ? `<td class="r num">${fmt2(h.tax / 2)}</td><td class="r num">${fmt2(h.tax / 2)}</td>` : `<td class="r num">${fmt2(h.tax)}</td>`}<td class="r num">${fmt2(h.tax)}</td></tr>`).join("")}</tbody></table></div>` : "";
   const notes = (F.notes && F.notes.length ? F.notes : ["Payment due within 15 days. Interest at 18% p.a. on late payment."]).map(n => `<li>${n}</li>`).join("");
-  const terms = `<div class="ft"><div><b>Bank details</b>${t.bank ? t.bank[0] : "HDFC Bank"} · A/c ${t.bank ? t.bank[1] : "50200012345678"}<br>IFSC ${t.bank ? t.bank[2] : "HDFC0001234"}</div><div><b>Declarations</b><ul class="nl">${notes}<li>Subject to ${(t.city ? t.city.split(",")[0] : "Jurisdiction")} jurisdiction. E.&amp;O.E.</li></ul></div></div>`;
+  const bankBlock = t.showBankDetails === false ? "" : `<div><b>Bank details</b>${t.bank ? t.bank[0] : "HDFC Bank"} · A/c ${t.bank ? t.bank[1] : "50200012345678"}<br>IFSC ${t.bank ? t.bank[2] : "HDFC0001234"}${t.bank?.[3] ? `<br>Branch ${t.bank[3]}` : ""}</div>`;
+  const terms = `<div class="ft">${bankBlock}<div><b>Declarations</b><ul class="nl">${notes}<li>Subject to ${(t.city ? t.city.split(",")[0] : "Jurisdiction")} jurisdiction. E.&amp;O.E.</li></ul></div></div>`;
   const sigKind = o.sig || "script";
   const sigEl = sigKind === "none" ? "" : sigKind === "drawn" && o.sigImg ? `<img class="sigimg" src="${o.sigImg}" alt="Signature">` : `<div class="sig">${t.sign || "Authorised Signatory"}</div>`;
   const stampColor = !o.stamp || o.stamp === "off" ? null : o.stamp === "brand" ? (lum(pal.acc) < .4 ? pal.acc : pal.ink) : o.stamp;
@@ -738,7 +739,7 @@ export function renderA4(t, o = {}) {
     case "sidebar": body = `<div class="lay"><div class="sb ${A ? "hasart" : ""}">${A}${head}${party(ps[0], 0)}${due}${pay}</div><div class="main pd col">${title}${flow({ noParties: true, noQr: true })}${strip}</div></div>`; break;
     case "classic": body = `${strip0 || '<div class="topline"></div>'}<div class="pd col"><div class="row">${head}${title}</div>${flow({ boxes: true })}${strip}</div>`; break;
     case "minimal": body = `${strip0}<div class="pd col"><div class="row"><div><div class="topnm">${t.biz}</div><div class="bar"></div>${lvl ? `<div class="sm" style="margin-top:.5em">GSTIN ${t.gstin}${F.ids ? "<br>" + F.ids : ""}</div>` : ""}</div>${title}</div>${due}${flow({ noDue: true })}${strip}</div>`; break;
-    case "hero": body = `<div class="pd col"><div class="row">${head}${title}</div><div class="herocard ${A ? "hasart" : ""}">${A}${due}<div class="paybtn">Pay by UPI →</div></div>${flow({ noDue: true })}${strip}</div>`; break;
+    case "hero": body = `<div class="pd col"><div class="row">${head}${title}</div><div class="herocard ${A ? "hasart" : ""}">${A}${due}${t.showUpiDetails === false ? "" : '<div class="paybtn">Pay by UPI →</div>'}</div>${flow({ noDue: true })}${strip}</div>`; break;
     case "split": body = `<div class="splt"><div class="artp ${A ? "hasart" : ""}">${A}<div class="nm"${R.fp.fdi ? ' style="font-style:italic"' : ""}>${t.biz}</div><div class="sm">${t.city}${lvl && F.ids ? "<br>" + F.ids : ""}</div></div><div class="pd">${title}${due}</div></div><div class="pd col">${flow({ noDue: true })}${strip}</div>`; break;
     case "receipt": body = `<div class="rc">${strip0}${head}${title}${flow({})}${strip}</div>`; break;
     case "editorial": body = `${strip0}<div class="pd col"><div class="row"><div class="ed">Invoice</div>${title}</div>${head}${flow({})}${strip}</div>`; break;
@@ -758,13 +759,13 @@ export function renderPhone(t, o = {}) {
   const lines = c.lines.map(l => `<div class="ln"><span>${l.desc}<small>${l.rate ? `${l.qty.toLocaleString("en-IN")} ${l.unit} × ${fmt(l.rate)}` : (l.sub || l.nw || "")}</small></span><span>${fmt(l.net)}</span></div>`).join("");
   const mt = o.msg || "none", mtext = o.msgText || msgDefault(mt, t);
   const reviewQrCustom = o.reviewQrImg || t.reviewQrImg || t.reviewQrUrl;
-  const paymentQr = o.qrImg || t.qrImg || t.upiQrUrl;
+  const paymentQr = t.showUpiDetails === false ? null : (o.qrImg || t.qrImg || t.upiQrUrl);
   const reviewMessage = mt === "review" && reviewQrCustom
     ? `<div class="msgp" style="display:flex;align-items:center;gap:10px"><img src="${reviewQrCustom}" alt="Rate us QR" style="width:56px;height:56px;object-fit:contain;flex:none"/><span><b>Rate us</b><br>${mtext}</span></div>`
     : (mt !== "none" ? `<div class="msgp">${mtext}</div>` : "");
   return `<div class="ph" style='${R.vars}'>${rib}<div class="phero">${A}<div class="in"><span class="sm">${t.biz} · ${F.doc}</span><span class="sm">${st === "paid" ? "Paid in full" : L("due")} · ${st === "overdue" ? "was due 23 Oct" : (t.dueDate || "19 Nov 2026")}</span><span class="big">${fmt(st === "paid" ? c.total : c.due)}</span><span class="sm">${words(st === "paid" ? c.total : c.due)}</span></div></div>
   <div class="sec">${lines}<div class="ln"><span>GST${c.rcm ? " · paid by you under RCM" : ""}</span><span>${fmt(c.tax)}</span></div>${c.less.map(x => `<div class="ln"><span>${x.label}</span><span>−${fmt(x.amt)}</span></div>`).join("")}${c.adv ? `<div class="ln"><span>${c.advLbl}</span><span>−${fmt(c.adv)}</span></div>` : ""}</div>
-  ${st === "paid" ? `<div class="sec"><div class="ln"><b>Receipt</b><span>Paid 16 Nov · UPI</span></div></div>` : `<div class="sec"><div class="paybtn">Pay ${fmt(c.due)} with UPI</div><div class="alt"><span class="nofee">No fee</span><span>Card +2%</span><span>Bank transfer</span></div></div>`}
+  ${t.showUpiDetails === false ? "" : (st === "paid" ? `<div class="sec"><div class="ln"><b>Receipt</b><span>Paid 16 Nov · UPI</span></div></div>` : `<div class="sec"><div class="paybtn">Pay ${fmt(c.due)} with UPI</div><div class="alt"><span class="nofee">No fee</span><span>Card +2%</span><span>Bank transfer</span></div></div>`)}
   ${paymentQr ? `<div class="sec" style="display:grid;justify-items:center;gap:6px"><span>Scan to pay via UPI</span><img src="${paymentQr}" alt="UPI QR" style="width:88px;height:88px;object-fit:contain" /></div>` : ""}
   ${reviewMessage}
   <div class="sec" style="border:0">${o.seal !== false ? `<span class="seal">✓ Verified invoice · tap to check</span>` : ""}<div class="alt" style="justify-content:space-between"><span>Download PDF</span><span>GST details ›</span></div>${F.refs ? `<div class="alt"><span>View design board ›</span></div>` : ""}${F.web || F.social ? `<div class="alt"><span>${[F.web, F.social].filter(Boolean).join(" · ")}</span></div>` : ""}</div>
@@ -778,14 +779,14 @@ export function renderThermal(t, o = {}) {
   const lines = c.lines.map(l => `<div>${l.desc}</div><div class="ln"><span>${l.rate ? `${l.qty.toLocaleString("en-IN")} ${l.unit} x ${l.rate.toLocaleString("en-IN")}` : (l.nw || "")}</span><span>${n2(l.net)}</span></div>`).join("");
   return `<div class="th"><div class="c b" style="font-size:1.15em">${t.biz}</div><div class="c">${t.city || ""}</div><div class="c">GSTIN ${t.gstin || "N/A"}</div>${F.ids ? `<div class="c">${F.ids}</div>` : ""}<div class="dl"></div><div class="c b">${F.doc.toUpperCase()}</div><div class="ln"><span>${t.invoiceNumber || "INV-001"}</span><span>${t.invoiceDate || "04-11-2026"}</span></div><div>To: ${F.parties[0].n}</div><div class="dl"></div>${lines}<div class="dl"></div>
   <div class="ln"><span>Taxable</span><span>${n2(c.taxable)}</span></div>${c.byRate.filter(b => b.r > 0).map(b => `<div class="ln"><span>${t.intra !== false ? "CGST+SGST" : "IGST"} ${b.r}%${c.rcm ? " RCM" : ""}</span><span>${n2(b.tax)}</span></div>`).join("")}<div class="ln big"><span>TOTAL</span><span>${fmt(c.total)}</span></div>${c.less.map(x => `<div class="ln"><span>${x.label}</span><span>-${n2(x.amt)}</span></div>`).join("")}${c.adv ? `<div class="ln"><span>Advance</span><span>-${c.adv.toLocaleString("en-IN")}</span></div>` : ""}<div class="ln b"><span>${st === "paid" ? "PAID" : "DUE"}</span><span>${fmt(st === "paid" ? c.total : c.due)}</span></div><div class="dl"></div>
-  <div class="c">Scan to pay by UPI</div>${qr((t.id || "inv") + "th", { dark: "#000", style: o.qr === "dots" ? "dots" : "classic", logoTxt: t.logo || "IN" })}<div class="c">${t.upi || "pay@upi"}</div><div class="dl"></div>${occ && occ !== "none" ? `<div class="c b">*** ${OCCDEF[occ].greet}! ***</div>` : ""}${mt !== "none" ? `<div class="c">${mtext}</div>` : ""}<div class="c">${o.seal !== false ? "Verify: invoxa.io/v/7F3K92" : ""}</div><div class="c">Thank you, visit again</div></div>`;
+  ${t.showUpiDetails === false ? "" : `<div class="c">Scan to pay by UPI</div>${qr((t.id || "inv") + "th", { dark: "#000", style: o.qr === "dots" ? "dots" : "classic", logoTxt: t.logo || "IN" })}<div class="c">${t.upi || "pay@upi"}</div><div class="dl"></div>`}${occ && occ !== "none" ? `<div class="c b">*** ${OCCDEF[occ].greet}! ***</div>` : ""}${mt !== "none" ? `<div class="c">${mtext}</div>` : ""}<div class="c">${o.seal !== false ? "Verify: invoxa.io/v/7F3K92" : ""}</div><div class="c">Thank you, visit again</div></div>`;
 }
 
 export const render = (t, o = {}) => {
   if (o.out === "phone") return renderPhone(t, o);
   if (o.out === "thermal") {
     let html = renderThermal(t, o);
-    const paymentQr = o.qrImg || t.qrImg || t.upiQrUrl;
+    const paymentQr = t.showUpiDetails === false ? null : (o.qrImg || t.qrImg || t.upiQrUrl);
     const reviewQr = o.reviewQrImg || t.reviewQrImg || t.reviewQrUrl;
     if (paymentQr) {
       html = html.replace(/<svg[\s\S]*?<\/svg>/, `<img src="${paymentQr}" alt="UPI QR" style="width:96px;height:96px;object-fit:contain;justify-self:center" />`);
@@ -807,6 +808,8 @@ export function invoxaInvoiceToEngineTemplate(inv) {
   const seller = inv.seller || {};
   const client = inv.client || {};
   const payment = inv.paymentDetails || {};
+  const showUpiDetails = Boolean(payment.upiId || seller.upiId || payment.upiQrUrl || inv.upiQrUrl);
+  const showBankDetails = Boolean(payment.bankName || payment.accountNumber || payment.ifsc || payment.branch);
   const items = (inv.items || []).map(item => [
     item.description || item.name || "Item",
     item.hsnSac || item.hsn || "998314",
@@ -845,6 +848,9 @@ export function invoxaInvoiceToEngineTemplate(inv) {
     ...safeTpl,
     id: templateKey,
     isCustomInvoice: true,
+    docType: inv.docType === 'quotation' ? 'quote' : (inv.docType || 'invoice'),
+    showUpiDetails,
+    showBankDetails,
     biz: seller.name || tpl.biz || "Krishna Enterprises",
     logo: (seller.name ? seller.name.slice(0, 2) : (tpl.logo || "KR")).toUpperCase(),
     logoImg: inv.logoImgUrl || inv.logoImg || tpl.logoImg || null,
@@ -873,9 +879,9 @@ export function invoxaInvoiceToEngineTemplate(inv) {
     cg: client.gstin || tpl.cg || "",
     gst: inv.items && inv.items[0] ? (inv.items[0].taxRate || 18) : (tpl.gst || 18),
     intra,
-    invoiceNumber: inv.invoiceNumber || tpl.invoiceNumber || "INV-2026-001",
-    invoiceDate: inv.invoiceDate || tpl.invoiceDate || new Date().toISOString().split('T')[0],
-    dueDate: inv.dueDate || tpl.dueDate || new Date(Date.now() + 15 * 86400000).toISOString().split('T')[0],
+    invoiceNumber: inv.invoiceNumber || inv.quoteNumber || tpl.invoiceNumber || "INV-2026-001",
+    invoiceDate: inv.invoiceDate || inv.quoteDate || tpl.invoiceDate || new Date().toISOString().split('T')[0],
+    dueDate: inv.dueDate || inv.validUntil || tpl.dueDate || new Date(Date.now() + 15 * 86400000).toISOString().split('T')[0],
     po: tpl.po || inv.poNumber || "WO-2026-118",
     adv: parseFloat(tpl.adv !== undefined ? tpl.adv : (inv.advancePaid || 0)),
     board: tpl.board,
@@ -883,8 +889,8 @@ export function invoxaInvoiceToEngineTemplate(inv) {
     stage: tpl.stage,
     items: items.length ? items : (tpl.items || [["Professional Services", "998314", 1, 1000, "nos", 18]]),
     sign: seller.authorizedSignatory || seller.name || tpl.sign || "Authorized Signatory",
-    upi: payment.upiId || tpl.upi || "krishna@okhdfc",
-    bank: [payment.bankName || (tpl.bank ? tpl.bank[0] : "HDFC Bank Ltd"), payment.accountNumber || (tpl.bank ? tpl.bank[1] : "50200012345678"), payment.ifsc || (tpl.bank ? tpl.bank[2] : "HDFC0000240")],
+    upi: payment.upiId || seller.upiId || "",
+    bank: [payment.bankName || "", payment.accountNumber || "", payment.ifsc || "", payment.branch || ""],
     phone: seller.phone || tpl.phone || "",
     email: seller.email || tpl.email || ""
   };

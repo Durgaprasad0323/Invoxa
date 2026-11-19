@@ -1,11 +1,15 @@
 import { createHash, randomBytes, randomUUID } from 'crypto'
 import { db } from '../config/db.js'
+import { getEffectivePlan } from '../middleware/authMiddleware.js'
 
+const MAX_ACTIVE_API_KEYS = 10
 const hashApiKey = (apiKey) => createHash('sha256').update(apiKey).digest('hex')
 
 const toPublicKey = (key) => ({
   id: key.id,
   name: key.name,
+  environment: key.environment || 'live',
+  developerInfo: key.developerInfo || null,
   keyPrefix: key.keyPrefix,
   createdAt: key.createdAt,
   lastUsedAt: key.lastUsedAt || null,
@@ -18,22 +22,70 @@ export const listApiKeys = (req, res) => {
     .sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt))
     .map(toPublicKey)
 
-  return res.json({ keys })
+  const maxActiveKeys = getEffectivePlan(req.user) === 'enterprise' ? MAX_ACTIVE_API_KEYS : 1
+  return res.json({ keys, maxActiveKeys })
 }
 
 export const createApiKey = (req, res) => {
   if (req.user.role === 'super_admin') {
     return res.status(403).json({ error: 'API keys can only be created for a business account.' })
   }
+  const isEnterprise = getEffectivePlan(req.user) === 'enterprise'
+  const maxActiveKeys = isEnterprise ? MAX_ACTIVE_API_KEYS : 1
 
   const name = typeof req.body?.name === 'string' ? req.body.name.trim() : ''
+  const environment = req.body?.environment === undefined ? 'live' : req.body.environment
   if (!name || name.length > 60) {
     return res.status(400).json({ error: 'Name this key with 1 to 60 characters.' })
   }
+  if (!['live', 'test'].includes(environment)) {
+    return res.status(400).json({ error: 'Choose either the live or sandbox environment.' })
+  }
+  if (!isEnterprise && environment !== 'live') {
+    return res.status(403).json({ code: 'ENTERPRISE_API_UPGRADE_REQUIRED', error: 'Sandbox API keys are an Enterprise feature. Your free Web integration key uses Live access.' })
+  }
+
+  const submittedInfo = req.body?.developerInfo
+  if (!submittedInfo || typeof submittedInfo !== 'object' || Array.isArray(submittedInfo)) {
+    return res.status(400).json({ error: 'Complete the developer and integration details before creating a key.' })
+  }
+  const developerName = typeof submittedInfo.developerName === 'string' ? submittedInfo.developerName.trim() : ''
+  const contactEmail = typeof submittedInfo.contactEmail === 'string' ? submittedInfo.contactEmail.trim().toLowerCase() : ''
+  const websiteUrl = typeof submittedInfo.websiteUrl === 'string' ? submittedInfo.websiteUrl.trim() : ''
+  const purpose = typeof submittedInfo.purpose === 'string' ? submittedInfo.purpose.trim() : ''
+  if (developerName.length < 2 || developerName.length > 100) {
+    return res.status(400).json({ error: 'Enter a developer contact name between 2 and 100 characters.' })
+  }
+  if (contactEmail.length > 254 || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(contactEmail)) {
+    return res.status(400).json({ error: 'Enter a valid developer contact email.' })
+  }
+  if (websiteUrl.length > 500) {
+    return res.status(400).json({ error: 'Website URL must be 500 characters or fewer.' })
+  }
+  let parsedWebsite
+  try {
+    parsedWebsite = new URL(websiteUrl)
+  } catch {
+    return res.status(400).json({ error: 'Enter a complete website URL starting with https:// or http://.' })
+  }
+  if (!['http:', 'https:'].includes(parsedWebsite.protocol) || !parsedWebsite.hostname || parsedWebsite.username || parsedWebsite.password) {
+    return res.status(400).json({ error: 'Website URL must use http:// or https:// and contain a valid host.' })
+  }
+  if (purpose.length < 10 || purpose.length > 500) {
+    return res.status(400).json({ error: 'Describe what the integration will do in 10 to 500 characters.' })
+  }
 
   const activeKeys = (db.data.apiKeys || []).filter(key => key.userId === req.user.id && !key.revokedAt)
-  if (activeKeys.length >= 10) {
-    return res.status(409).json({ error: 'You can have up to 10 active API keys. Revoke one before creating another.' })
+  if (activeKeys.some(key => key.name.trim().toLowerCase() === name.toLowerCase() && (key.environment || 'live') === environment)) {
+    return res.status(409).json({ error: `An active ${environment} key already uses this name. Choose a different name for each integration.` })
+  }
+  if (activeKeys.length >= maxActiveKeys) {
+    return res.status(403).json({
+      code: isEnterprise ? 'API_KEY_LIMIT_REACHED' : 'ENTERPRISE_API_UPGRADE_REQUIRED',
+      error: isEnterprise
+        ? `Enterprise allows up to ${MAX_ACTIVE_API_KEYS} active API keys. Revoke one before creating another.`
+        : 'Your Free plan includes one active Web integration API key. Upgrade to Enterprise for more keys and Sandbox access.'
+    })
   }
 
   const accountUser = db.data.users.find(item => item.id === req.user.id)
@@ -43,12 +95,14 @@ export const createApiKey = (req, res) => {
     return res.status(400).json({ error: 'Add a business profile before creating an API key.' })
   }
 
-  const secret = `invoxa_live_${randomBytes(32).toString('base64url')}`
+  const secret = `invoxa_${environment}_${randomBytes(32).toString('base64url')}`
   const record = {
     id: `key_${randomUUID()}`,
     userId: req.user.id,
     companyId,
     name,
+    environment,
+    developerInfo: { developerName, contactEmail, websiteUrl: parsedWebsite.toString(), purpose },
     keyHash: hashApiKey(secret),
     keyPrefix: `${secret.slice(0, 20)}…`,
     createdAt: new Date().toISOString(),
@@ -95,7 +149,7 @@ const optionalText = (value, label, maxLength) => {
   return { value: value.trim(), error: null }
 }
 
-export const createApiInvoice = (req, res) => {
+export const createApiInvoice = async (req, res) => {
   const body = req.body
   if (!body || typeof body !== 'object' || Array.isArray(body)) {
     return res.status(400).json({ error: 'Request body must be a JSON object.' })
@@ -223,7 +277,22 @@ export const createApiInvoice = (req, res) => {
     createdAt: new Date().toISOString()
   }
 
-  db.data.invoices.unshift(invoice)
-  db.save()
-  return res.status(201).json({ message: 'Invoice created successfully.', invoice })
+  if (req.apiKey?.environment === 'test') {
+    invoice.invoiceNumber = `TEST-${invoice.invoiceNumber}`
+    invoice.status = 'Test'
+    return res.status(200).json({
+      message: 'Sandbox request validated successfully. No invoice was saved.',
+      simulated: true,
+      invoice
+    })
+  }
+
+  try {
+    await db.persistInvoice(invoice)
+    db.data.invoices = [invoice, ...db.data.invoices.filter(existing => existing.id !== invoice.id)]
+    return res.status(201).json({ message: 'Invoice created successfully.', invoice })
+  } catch (error) {
+    console.error('Developer API invoice persistence error:', error)
+    return res.status(503).json({ error: 'Invoice could not be saved. Please try again when persistent storage is available.' })
+  }
 }

@@ -1,26 +1,28 @@
 import React from 'react'
+import Icon from '../ui/Icon'
 
 export default function WorkspaceHeader({
   activeTab,
   onNewInvoice,
   onNewQuotation,
   onOpenPos,
+  onOpenTemplates,
   searchQuery,
   setSearchQuery,
   onToggleMobileMenu
 }) {
   const getBreadcrumbTitle = () => {
     switch (activeTab) {
-      case 'invoices': return 'Sales ▶ Invoices'
-      case 'quotations': return 'Sales ▶ Quotations & Estimates'
-      case 'ai-generator': return 'Invoxa AI ▶ Prompt Invoicing'
+      case 'invoices': return 'Sales  Invoices'
+      case 'quotations': return 'Sales  Quotations & Estimates'
+      case 'ai-generator': return 'Invoxa AI  Prompt Invoicing'
       case 'templates': return 'Invoice Template & Mixers'
-      case 'customers': return 'Directory ▶ Customers'
-      case 'products': return 'Inventory ▶ Products & Services'
-      case 'payments': return 'Payments ▶ UPI QR & Bank'
-      case 'api': return 'Developer ▶ API Keys & Claude MCP'
-      case 'settings': return 'Configuration ▶ Business Settings'
-      case 'pos': return 'POS Terminal ▶ 80mm Thermal Receipt'
+      case 'customers': return 'Directory  Customers'
+      case 'products': return 'Inventory  Products & Services'
+      case 'payments': return 'Payments  UPI QR & Bank'
+      case 'api': return 'Developer  API Keys & Claude MCP'
+      case 'settings': return 'Configuration  Business Settings'
+      case 'pos': return 'POS Terminal  80mm Thermal Receipt'
       default: return 'Sales'
     }
   }
@@ -34,7 +36,7 @@ export default function WorkspaceHeader({
           onClick={onToggleMobileMenu}
           aria-label="Toggle navigation menu"
         >
-          ☰
+          <Icon name="menu" size={20} />
         </button>
         <span className="breadcrumb-title">{getBreadcrumbTitle()}</span>
         <span className="mobile-breadcrumb-title">
@@ -48,7 +50,7 @@ export default function WorkspaceHeader({
 
       {/* Center Search Bar */}
       <div className="swipe-search-container">
-        <span className="search-icon">🔍</span>
+        <span className="search-icon" aria-hidden="true"><Icon name="search" size={17} /></span>
         <input
           type="text"
           className="swipe-search-input"
@@ -62,10 +64,10 @@ export default function WorkspaceHeader({
       {/* Right Action Buttons */}
       <div className="swipe-header-right">
         <button
-          className="header-action-btn ghost-btn"
-          onClick={() => alert('Document Settings: Prefix, Terms, Due date defaults')}
+          className="header-action-btn ghost-btn desktop-templates-btn"
+          onClick={onOpenTemplates}
         >
-          ⚙️ Settings
+          Templates
         </button>
 
         <button

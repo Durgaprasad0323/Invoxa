@@ -210,11 +210,12 @@ const guides = [
   {
     id: 'subscriptions',
     keywords: ['subscription', 'plan', 'upgrade', 'billing plan'],
-    title: 'Review your Invoxa plan',
+    title: 'View and upgrade your Invoxa plan',
     steps: [
-      'Open Subscriptions from the Sales section in the workspace sidebar.',
-      'Review the available plan and billing information.',
-      'Choose the plan action shown on the page to continue.'
+      'Open Subscriptions or choose View Plans in the workspace sidebar.',
+      'Compare the Free, Pro, and Enterprise plans and review which workspace tools each plan unlocks.',
+      'Choose Pro or Enterprise to open Razorpay Checkout. Your plan changes only after Invoxa verifies the payment.',
+      'After confirmation, return to the workspace. Features outside your plan link back to the plan comparison page.'
     ],
     tab: 'subscriptions'
   },
@@ -225,7 +226,7 @@ const guides = [
     steps: [
       'Open Invite Users from the workspace sidebar.',
       'Enter the team member’s contact details and choose an access role.',
-      'Send the invite and ask them to follow the sign-in instructions.'
+      'Send the prepared email draft from your mail app. Workspace access and role permissions are not activated in this version.'
     ],
     tab: 'invite-users'
   },

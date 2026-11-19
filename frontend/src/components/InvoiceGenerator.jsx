@@ -2,6 +2,7 @@ import React, { useEffect, useState, useRef } from 'react'
 import Tesseract from 'tesseract.js'
 import { parseInvoicePrompt } from '../utils/aiParser'
 import { getPlatformHelpAnswer, platformHelpSuggestions } from '../utils/platformHelp'
+import Icon from './ui/Icon'
 
 const PLATFORM_SECTION_LABELS = {
   templates: 'Invoice Template & Mixers',
@@ -156,21 +157,21 @@ export default function InvoiceGenerator({ onInvoiceGenerated, onOpenSection, on
             .join('\n')
           setOcrExtractedText(cleanedLines)
           if (cleanedLines) {
-            setOcrStatusMessage('✅ Bill scanned successfully! Review the text below and click Generate.')
+            setOcrStatusMessage(' Bill scanned successfully! Review the text below and click Generate.')
           } else {
-            setOcrStatusMessage('⚠️ No readable bill text found. Type or paste the details below.')
+            setOcrStatusMessage(' No readable bill text found. Type or paste the details below.')
           }
           setOcrProgress(100)
         } else {
           setOcrExtractedText('')
-          setOcrStatusMessage('⚠️ Could not read text clearly. Please type the bill details manually below.')
+          setOcrStatusMessage(' Could not read text clearly. Please type the bill details manually below.')
           setOcrProgress(100)
         }
       } catch (err) {
         if (requestId !== ocrRequestRef.current) return
         console.warn('OCR error:', err.message)
         setOcrExtractedText('')
-        setOcrStatusMessage(`⚠️ OCR could not scan this image. ${err.message || 'Please try a clear JPG or PNG photo, or type the details below.'}`)
+        setOcrStatusMessage(` OCR could not scan this image. ${err.message || 'Please try a clear JPG or PNG photo, or type the details below.'}`)
         setOcrProgress(0)
       } finally {
         if (requestId === ocrRequestRef.current) setIsOcrScanning(false)
@@ -180,7 +181,7 @@ export default function InvoiceGenerator({ onInvoiceGenerated, onOpenSection, on
     reader.onerror = () => {
       if (requestId !== ocrRequestRef.current) return
       setIsOcrScanning(false)
-      setOcrStatusMessage('⚠️ Could not open this image. Please choose another JPG or PNG photo.')
+      setOcrStatusMessage(' Could not open this image. Please choose another JPG or PNG photo.')
     }
 
     reader.readAsDataURL(file)
@@ -211,12 +212,12 @@ export default function InvoiceGenerator({ onInvoiceGenerated, onOpenSection, on
     const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition
 
     if (!SpeechRecognition) {
-      setVoiceError('⚠️ Your browser does not support Web Speech Recognition. Please open this app in Google Chrome or Microsoft Edge to use voice recording.')
+      setVoiceError(' Your browser does not support Web Speech Recognition. Please open this app in Google Chrome or Microsoft Edge to use voice recording.')
       return
     }
 
     if (!window.isSecureContext && !['localhost', '127.0.0.1'].includes(window.location.hostname)) {
-      setVoiceError('⚠️ Voice recording requires a secure HTTPS connection. Open the site over HTTPS and allow microphone access.')
+      setVoiceError(' Voice recording requires a secure HTTPS connection. Open the site over HTTPS and allow microphone access.')
       return
     }
 
@@ -251,17 +252,17 @@ export default function InvoiceGenerator({ onInvoiceGenerated, onOpenSection, on
         console.warn('Speech recognition event error:', event.error)
         if (event.error === 'not-allowed' || event.error === 'permission-denied') {
           isRecordingRef.current = false
-          setVoiceError('⚠️ Microphone permission blocked. Please click the lock 🔒 icon next to localhost in your browser address bar, set Microphone to "Allow", and try again.')
+          setVoiceError(' Microphone permission blocked. Please click the lock  icon next to localhost in your browser address bar, set Microphone to "Allow", and try again.')
           setIsRecording(false)
         } else if (event.error === 'no-speech') {
           // Do not stop, user might just be pausing between words
         } else if (event.error === 'network') {
           isRecordingRef.current = false
-          setVoiceError('⚠️ Speech recognition network timeout. You can dictate by typing directly or use the quick sample chips below.')
+          setVoiceError(' Speech recognition network timeout. You can dictate by typing directly or use the quick sample chips below.')
           setIsRecording(false)
         } else {
           isRecordingRef.current = false
-          setVoiceError(`⚠️ Voice note (${event.error}). You can dictate by typing or editing below.`)
+          setVoiceError(` Voice note (${event.error}). You can dictate by typing or editing below.`)
           setIsRecording(false)
         }
       }
@@ -354,12 +355,12 @@ export default function InvoiceGenerator({ onInvoiceGenerated, onOpenSection, on
 
       <div className="generator-box">
         <div className="generator-top">
-          <span className="ai-symbol">✦</span>
+          <span className="ai-symbol"><Icon name="sparkles" size={22} /></span>
           <div>
             <strong>{assistantMode === 'create' ? 'AI Invoice Generator' : 'Ask Invoxa AI'}</strong>
             <small>{assistantMode === 'create' ? 'Create invoices from text, voice, photos, or messages' : 'Get step-by-step help with Invoxa features'}</small>
           </div>
-          <span className="online-status">● AI Ready</span>
+          <span className="online-status"><Icon name="checkCircle" size={13} /> AI Ready</span>
         </div>
 
         <div className="generator-mode-switch" role="tablist" aria-label="Choose Invoxa AI mode">
@@ -392,19 +393,19 @@ export default function InvoiceGenerator({ onInvoiceGenerated, onOpenSection, on
                 handleGenerate(p.text)
               }}
             >
-              ✦ {p.label}
+              <Icon name="sparkles" size={13} /> {p.label}
             </button>
           ))}
         </div>
 
         <div className="generator-bottom">
-          <span className="generator-badge">✦ Smart Indian GST Calculation & Auto HSN</span>
+          <span className="generator-badge"><Icon name="shieldCheck" size={14} /> Smart Indian GST Calculation & Auto HSN</span>
           <button
             className="generate-action-btn"
             disabled={isProcessing || !prompt.trim()}
             onClick={() => handleGenerate()}
           >
-            {isProcessing ? 'Generating Invoice...' : 'Generate Invoice →'}
+            {isProcessing ? 'Generating Invoice...' : <>Generate Invoice <Icon name="arrowUpRight" size={16} /></>}
           </button>
         </div>
         </>
@@ -482,7 +483,7 @@ export default function InvoiceGenerator({ onInvoiceGenerated, onOpenSection, on
               setVoiceError('')
             }}
           >
-            📷 Upload Bill / Estimate Photo
+            <Icon name="camera" size={17} /> Upload Bill / Estimate Photo
           </button>
           <button
             type="button"
@@ -492,7 +493,7 @@ export default function InvoiceGenerator({ onInvoiceGenerated, onOpenSection, on
               setVoiceError('')
             }}
           >
-            🎙 Record Voice Note
+            <Icon name="microphone" size={17} /> Record Voice Note
           </button>
           <button
             type="button"
@@ -502,7 +503,7 @@ export default function InvoiceGenerator({ onInvoiceGenerated, onOpenSection, on
               setVoiceError('')
             }}
           >
-            ✉ Paste WhatsApp / Client Message
+            <Icon name="message" size={17} /> Paste WhatsApp / Client Message
           </button>
         </div>
       </div>
@@ -527,7 +528,7 @@ export default function InvoiceGenerator({ onInvoiceGenerated, onOpenSection, on
             style={{ display: 'none' }}
             onChange={handlePhotoSelect}
           />
-          <div style={{ fontSize: '2.4rem', marginBottom: 8 }}>📷</div>
+          <div style={{ color: '#64748b', marginBottom: 8 }}><Icon name="image" size={28} /></div>
           <h3 style={{ margin: '0 0 6px', color: '#1e293b', fontSize: '1.15rem' }}>Scan Physical Bill / Receipt Photo</h3>
           <p style={{ margin: '0 0 16px', color: '#64748b', fontSize: '0.88rem' }}>
             Upload any photo of a paper receipt, handwritten bill, or estimate to extract the customer and item details.
@@ -540,7 +541,7 @@ export default function InvoiceGenerator({ onInvoiceGenerated, onOpenSection, on
               onClick={() => fileInputRef.current?.click()}
               style={{ background: '#15865a', color: '#fff', padding: '12px 24px', borderRadius: 8, fontWeight: 700, border: 'none', cursor: 'pointer' }}
             >
-              Choose Bill Image from Device 📁
+              Choose Bill Image from Device 
             </button>
           ) : (
             <div>
@@ -559,7 +560,7 @@ export default function InvoiceGenerator({ onInvoiceGenerated, onOpenSection, on
                 <div style={{ flex: 1, minWidth: 260, textAlign: 'left' }}>
                   {isOcrScanning ? (
                     <div style={{ padding: 20, background: '#f8fafc', borderRadius: 8, textAlign: 'center', border: '1px solid #e2e8f0' }}>
-                      <div style={{ fontSize: '1.4rem', marginBottom: 6 }}>⚙️</div>
+                      <div style={{ marginBottom: 6 }}><Icon name="scan" size={20} /></div>
                       <strong style={{ color: '#15865a', display: 'block', marginBottom: 6 }}>
                         {ocrStatusMessage || `Scanning… (${ocrProgress}%)`}
                       </strong>
@@ -574,23 +575,23 @@ export default function InvoiceGenerator({ onInvoiceGenerated, onOpenSection, on
                         onClick={() => {
                           ocrRequestRef.current += 1
                           setIsOcrScanning(false)
-                          setOcrStatusMessage('⚠️ Skipped scanning. Type or paste the bill details below.')
+                          setOcrStatusMessage(' Skipped scanning. Type or paste the bill details below.')
                           setOcrExtractedText('')
                         }}
                         style={{ background: 'none', border: 'none', color: '#2563eb', fontSize: '0.8rem', cursor: 'pointer', textDecoration: 'underline' }}
                       >
-                        Skip scanning &amp; type details manually →
+                        Skip scanning &amp; type details manually <Icon name="arrowUpRight" size={14} />
                       </button>
                     </div>
                   ) : (
                     <div>
                       {ocrStatusMessage && (
-                        <div style={{ fontSize: '0.8rem', color: ocrStatusMessage.startsWith('⚠') ? '#b45309' : '#15865a', fontWeight: 600, marginBottom: 8, padding: '6px 10px', background: ocrStatusMessage.startsWith('⚠') ? '#fffbeb' : '#f0fdf4', borderRadius: 6 }}>
+                        <div style={{ fontSize: '0.8rem', color: /no readable|could not|skipped/i.test(ocrStatusMessage) ? '#b45309' : '#15865a', fontWeight: 600, marginBottom: 8, padding: '6px 10px', background: /no readable|could not|skipped/i.test(ocrStatusMessage) ? '#fffbeb' : '#f0fdf4', borderRadius: 6 }}>
                           {ocrStatusMessage}
                         </div>
                       )}
                       <label style={{ fontSize: '0.82rem', fontWeight: 700, color: '#334155', display: 'block', marginBottom: 4 }}>
-                        📝 Bill Details (Review / Edit, then click Generate):
+                         Bill Details (Review / Edit, then click Generate):
                       </label>
                       <textarea
                         rows={7}
@@ -617,24 +618,24 @@ export default function InvoiceGenerator({ onInvoiceGenerated, onOpenSection, on
               {/* Format Matcher for Uploaded Bill */}
               <div style={{ margin: '14px 0 18px', textAlign: 'left', background: '#f8fafc', padding: '12px 14px', borderRadius: 8, border: '1px solid #e2e8f0' }}>
                 <label style={{ fontSize: '0.85rem', fontWeight: 700, color: '#1e293b', display: 'block', marginBottom: 8 }}>
-                  📑 Select Invoice Format to Match Your Uploaded Photo:
+                   Select Invoice Format to Match Your Uploaded Photo:
                 </label>
                 <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(170px, 1fr))', gap: 8 }}>
                   <label style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '8px 10px', borderRadius: 6, background: billFormat === 'classic' ? '#dcfce7' : '#ffffff', border: billFormat === 'classic' ? '1.5px solid #15865a' : '1px solid #cbd5e1', cursor: 'pointer', fontSize: '0.82rem' }}>
                     <input type="radio" name="billFormat" value="classic" checked={billFormat === 'classic'} onChange={() => setBillFormat('classic')} />
-                    <span>📄 <strong>Traditional Indian GST Bill</strong><br/><small style={{ color: '#64748b' }}>Standard boxed tables</small></span>
+                    <span> <strong>Traditional Indian GST Bill</strong><br/><small style={{ color: '#64748b' }}>Standard boxed tables</small></span>
                   </label>
                   <label style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '8px 10px', borderRadius: 6, background: billFormat === 'receipt' ? '#dcfce7' : '#ffffff', border: billFormat === 'receipt' ? '1.5px solid #15865a' : '1px solid #cbd5e1', cursor: 'pointer', fontSize: '0.82rem' }}>
                     <input type="radio" name="billFormat" value="receipt" checked={billFormat === 'receipt'} onChange={() => setBillFormat('receipt')} />
-                    <span>🧾 <strong>Retail Cash Memo / Receipt</strong><br/><small style={{ color: '#64748b' }}>Shop & counter receipt</small></span>
+                    <span> <strong>Retail Cash Memo / Receipt</strong><br/><small style={{ color: '#64748b' }}>Shop & counter receipt</small></span>
                   </label>
                   <label style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '8px 10px', borderRadius: 6, background: billFormat === 'thermal' ? '#dcfce7' : '#ffffff', border: billFormat === 'thermal' ? '1.5px solid #15865a' : '1px solid #cbd5e1', cursor: 'pointer', fontSize: '0.82rem' }}>
                     <input type="radio" name="billFormat" value="thermal" checked={billFormat === 'thermal'} onChange={() => setBillFormat('thermal')} />
-                    <span>🖨 <strong>Thermal POS Slip</strong><br/><small style={{ color: '#64748b' }}>80mm counter slip</small></span>
+                    <span> <strong>Thermal POS Slip</strong><br/><small style={{ color: '#64748b' }}>80mm counter slip</small></span>
                   </label>
                   <label style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '8px 10px', borderRadius: 6, background: billFormat === 'photo-clone' ? '#dcfce7' : '#ffffff', border: billFormat === 'photo-clone' ? '1.5px solid #15865a' : '1px solid #cbd5e1', cursor: 'pointer', fontSize: '0.82rem' }}>
                     <input type="radio" name="billFormat" value="photo-clone" checked={billFormat === 'photo-clone'} onChange={() => setBillFormat('photo-clone')} />
-                    <span>📷 <strong>Photo Clone View</strong><br/><small style={{ color: '#64748b' }}>Original photo + digital copy</small></span>
+                    <span> <strong>Photo Clone View</strong><br/><small style={{ color: '#64748b' }}>Original photo + digital copy</small></span>
                   </label>
                 </div>
               </div>
@@ -656,7 +657,7 @@ export default function InvoiceGenerator({ onInvoiceGenerated, onOpenSection, on
                     boxShadow: '0 2px 8px rgba(21,134,90,0.2)'
                   }}
                 >
-                  Generate Invoice from Scanned Bill 🚀
+                  Generate Invoice from Scanned Bill 
                 </button>
                 <button
                   type="button"
@@ -691,8 +692,8 @@ export default function InvoiceGenerator({ onInvoiceGenerated, onOpenSection, on
           textAlign: 'center',
           boxShadow: '0 4px 12px rgba(0,0,0,0.06)'
         }}>
-          <div style={{ fontSize: '2.5rem', marginBottom: 8 }}>
-            {isRecording ? '🔴' : '🎙'}
+          <div style={{ display: 'inline-flex', color: isRecording ? '#b91c1c' : '#64748b', marginBottom: 8 }}>
+            <Icon name="microphone" size={26} />
           </div>
           <h3 style={{ margin: '0 0 6px', color: '#1e293b', fontSize: '1.15rem' }}>
             {isRecording ? 'Listening... Speak Now' : 'Voice Invoice Dictation'}
@@ -749,7 +750,7 @@ export default function InvoiceGenerator({ onInvoiceGenerated, onOpenSection, on
               }}
               style={{ background: '#f8fafc', border: '1px solid #cbd5e1', padding: '3px 8px', borderRadius: 4, fontSize: '0.75rem', cursor: 'pointer' }}
             >
-              ✦ Laptops &amp; Monitors
+              <Icon name="sparkles" size={13} /> Laptops &amp; Monitors
             </button>
             <button
               type="button"
@@ -759,7 +760,7 @@ export default function InvoiceGenerator({ onInvoiceGenerated, onOpenSection, on
               }}
               style={{ background: '#f8fafc', border: '1px solid #cbd5e1', padding: '3px 8px', borderRadius: 4, fontSize: '0.75rem', cursor: 'pointer' }}
             >
-              ✦ Chairs Order
+              <Icon name="sparkles" size={13} /> Chairs Order
             </button>
             <button
               type="button"
@@ -769,7 +770,7 @@ export default function InvoiceGenerator({ onInvoiceGenerated, onOpenSection, on
               }}
               style={{ background: '#f8fafc', border: '1px solid #cbd5e1', padding: '3px 8px', borderRadius: 4, fontSize: '0.75rem', cursor: 'pointer' }}
             >
-              ✦ Cement &amp; Transport (Hindi)
+              <Icon name="sparkles" size={13} /> Cement &amp; Transport (Hindi)
             </button>
           </div>
 
@@ -792,7 +793,7 @@ export default function InvoiceGenerator({ onInvoiceGenerated, onOpenSection, on
                   boxShadow: '0 2px 8px rgba(220,38,38,0.25)'
                 }}
               >
-                <span>🎙</span> Start Recording
+                <Icon name="microphone" size={17} /> Start Recording
               </button>
             ) : (
               <button
@@ -811,7 +812,7 @@ export default function InvoiceGenerator({ onInvoiceGenerated, onOpenSection, on
                   gap: 8
                 }}
               >
-                <span>⏹</span> Stop Recording
+                <Icon name="x" size={17} /> Stop Recording
               </button>
             )}
 
@@ -833,7 +834,7 @@ export default function InvoiceGenerator({ onInvoiceGenerated, onOpenSection, on
                   boxShadow: '0 2px 8px rgba(21,134,90,0.25)'
                 }}
               >
-                <span>🚀</span> Generate Invoice from Speech
+                <Icon name="fileCheck" size={17} /> Generate Invoice from Speech
               </button>
             )}
 
@@ -868,7 +869,7 @@ export default function InvoiceGenerator({ onInvoiceGenerated, onOpenSection, on
           boxShadow: '0 4px 12px rgba(0,0,0,0.06)'
         }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 12 }}>
-            <span style={{ fontSize: '1.8rem' }}>💬</span>
+            <Icon name="message" size={20} />
             <div>
               <h3 style={{ margin: 0, color: '#1e293b', fontSize: '1.15rem' }}>Paste WhatsApp or Client Chat Message</h3>
               <p style={{ margin: 0, color: '#64748b', fontSize: '0.85rem' }}>
@@ -921,7 +922,7 @@ export default function InvoiceGenerator({ onInvoiceGenerated, onOpenSection, on
                 boxShadow: '0 2px 8px rgba(37,211,102,0.25)'
               }}
             >
-              <span>✦</span> Extract &amp; Generate Invoice
+              <Icon name="sparkles" size={16} /> Extract &amp; Generate Invoice
             </button>
           </div>
         </div>

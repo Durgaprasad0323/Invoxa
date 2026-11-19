@@ -11,6 +11,7 @@ const customerSchema = new mongoose.Schema({
   city: { type: String },
   state: { type: String, default: 'Maharashtra' },
   address: { type: String },
+  pincode: { type: String },
   outstandingDue: { type: Number, default: 0 },
   totalPurchases: { type: Number, default: 0 },
   createdAt: { type: Date, default: Date.now }

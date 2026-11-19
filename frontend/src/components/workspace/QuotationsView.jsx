@@ -1,5 +1,6 @@
 import React, { useState } from 'react'
 import { calculateInvoiceTotals, formatINR } from '../../utils/calculations'
+import Icon from '../ui/Icon'
 
 export default function QuotationsView({
   quotations,
@@ -47,8 +48,9 @@ export default function QuotationsView({
     const clientName = q.client?.name || 'Customer'
     const sellerName = q.seller?.name || 'Krishna Enterprises'
     const quoteNo = q.quoteNumber
+    const documentTypeLabel = q.docType === 'estimate' ? 'Estimate' : 'Quotation'
 
-    const message = `Dear ${clientName},\n\nThank you for your interest! Here is Quotation ${quoteNo} for ${formatINR(grandTotal)} from ${sellerName}.\n\nValid Until: ${q.validUntil}\nStatus: PENDING APPROVAL\n\nPlease reply to confirm or ask any questions.\n\nBest regards,\n${sellerName}`
+    const message = `Dear ${clientName},\n\nThank you for your interest! Here is ${documentTypeLabel} ${quoteNo} for ${formatINR(grandTotal)} from ${sellerName}.\n\nValid Until: ${q.validUntil}\nStatus: ${q.status || 'Draft'}\n\nPlease reply to confirm or ask any questions.\n\nBest regards,\n${sellerName}`
     const url = `https://wa.me/?text=${encodeURIComponent(message)}`
     window.open(url, '_blank')
   }
@@ -60,7 +62,7 @@ export default function QuotationsView({
         <div className="metric-card">
           <div className="metric-header">
             <span className="metric-title">TOTAL QUOTATIONS</span>
-            <span className="metric-icon">💬</span>
+            <span className="metric-icon"><Icon name="fileText" /></span>
           </div>
           <div className="metric-value">{formatINR(totals.totalValue)}</div>
           <span className="metric-sub">{quotations.length} quotes & estimates</span>
@@ -69,7 +71,7 @@ export default function QuotationsView({
         <div className="metric-card pending-metric">
           <div className="metric-header">
             <span className="metric-title">OPEN PIPELINE</span>
-            <span className="metric-icon">⏳</span>
+            <span className="metric-icon"><Icon name="clock" /></span>
           </div>
           <div className="metric-value">{formatINR(totals.openValue)}</div>
           <span className="metric-sub">{totals.openCount} quotes awaiting client deal</span>
@@ -78,7 +80,7 @@ export default function QuotationsView({
         <div className="metric-card paid-metric">
           <div className="metric-header">
             <span className="metric-title">CONVERTED TO INVOICE</span>
-            <span className="metric-icon">🚀</span>
+            <span className="metric-icon"><Icon name="checkCircle" /></span>
           </div>
           <div className="metric-value">{totals.convertedCount} Deals</div>
           <span className="metric-sub">Closed & converted to Tax Bills</span>
@@ -116,7 +118,7 @@ export default function QuotationsView({
       {/* Quotes Table */}
       {filteredQuotes.length === 0 ? (
         <div className="swipe-empty-state">
-          <div className="empty-illustration">💬</div>
+          <div className="empty-illustration"><Icon name="fileCheck" size={28} /></div>
           <h3>Send quotations & close deals faster.</h3>
           <p>Create professional estimates, share via WhatsApp, and convert them to invoices with 1 click.</p>
           <button className="swipe-cta-btn" onClick={onNewQuotation}>
@@ -136,10 +138,10 @@ export default function QuotationsView({
                   <div className="mic-header">
                     <div className="mic-doc-info">
                       <strong className="mic-num quote-num">{q.quoteNumber}</strong>
-                      <span className="badge-type-pill">Estimate</span>
+                      <span className="badge-type-pill">{q.docType === 'estimate' ? 'Estimate' : 'Quotation'}</span>
                     </div>
                     <span className={`status-pill ${isConverted ? 'converted' : 'draft'}`}>
-                      {isConverted ? '★ Converted' : '○ Sent'}
+                      <Icon name={isConverted ? 'fileCheck' : 'clock'} size={13} /> {isConverted ? 'Converted' : 'Sent'}
                     </span>
                   </div>
 
@@ -155,7 +157,7 @@ export default function QuotationsView({
                   </div>
 
                   <div className="mic-dates-row">
-                    <span>📅 {q.quoteDate}</span>
+                    <span> {q.quoteDate}</span>
                     <span className="valid-until-cell">Valid: {q.validUntil}</span>
                   </div>
 
@@ -166,10 +168,10 @@ export default function QuotationsView({
                         onClick={() => onConvertQuoteToInvoice(q)}
                         title="Convert to Tax Invoice"
                       >
-                        ⚡ Convert
+                         Convert
                       </button>
                     ) : (
-                      <span className="converted-label">✓ Invoiced</span>
+                      <span className="converted-label"><Icon name="checkCircle" size={13} /> Invoiced</span>
                     )}
 
                     <button
@@ -177,7 +179,7 @@ export default function QuotationsView({
                       onClick={() => handleWhatsAppQuote(q)}
                       title="Share Quote on WhatsApp"
                     >
-                      💬 WA
+                       WA
                     </button>
 
                     <button
@@ -185,7 +187,7 @@ export default function QuotationsView({
                       onClick={() => onPrintQuotation(q)}
                       title="Download PDF"
                     >
-                      📥 PDF
+                       PDF
                     </button>
 
                     <button
@@ -193,7 +195,7 @@ export default function QuotationsView({
                       onClick={() => onEditQuotation(q)}
                       title="Edit Quote"
                     >
-                      ✏️ Edit
+                       Edit
                     </button>
 
                     <button
@@ -205,7 +207,7 @@ export default function QuotationsView({
                       }}
                       title="Delete"
                     >
-                      🗑️
+                      Delete
                     </button>
                   </div>
                 </div>
@@ -237,7 +239,7 @@ export default function QuotationsView({
                       <td>
                         <div className="doc-num-cell">
                           <strong className="doc-num quote-num">{q.quoteNumber}</strong>
-                          <span className="badge-type-pill">Estimate</span>
+                          <span className="badge-type-pill">{q.docType === 'estimate' ? 'Estimate' : 'Quotation'}</span>
                         </div>
                       </td>
                       <td>
@@ -258,7 +260,7 @@ export default function QuotationsView({
                       </td>
                       <td>
                         <span className={`status-pill ${isConverted ? 'converted' : 'draft'}`}>
-                          {isConverted ? '★ Converted' : '○ Sent'}
+                          <Icon name={isConverted ? 'fileCheck' : 'clock'} size={13} /> {isConverted ? 'Converted' : 'Sent'}
                         </span>
                       </td>
                       <td>
@@ -269,10 +271,10 @@ export default function QuotationsView({
                               onClick={() => onConvertQuoteToInvoice(q)}
                               title="Convert this quote directly into an official GST Tax Invoice"
                             >
-                              ⚡ Convert to Invoice
+                               Convert to Invoice
                             </button>
                           ) : (
-                            <span className="converted-label">✓ Invoiced</span>
+                            <span className="converted-label"><Icon name="checkCircle" size={13} /> Invoiced</span>
                           )}
 
                           <button
@@ -280,7 +282,7 @@ export default function QuotationsView({
                             onClick={() => handleWhatsAppQuote(q)}
                             title="Share Quote on WhatsApp"
                           >
-                            💬 WA
+                             WA
                           </button>
 
                           <button
@@ -288,7 +290,7 @@ export default function QuotationsView({
                             onClick={() => onPrintQuotation(q)}
                             title="Download Quote PDF"
                           >
-                            📥 PDF
+                             PDF
                           </button>
 
                           <button
@@ -296,7 +298,7 @@ export default function QuotationsView({
                             onClick={() => onEditQuotation(q)}
                             title="Edit Quote"
                           >
-                            ✏️
+                            Edit
                           </button>
 
                           <button
@@ -308,7 +310,7 @@ export default function QuotationsView({
                             }}
                             title="Delete"
                           >
-                            🗑️
+                            Delete
                           </button>
                         </div>
                       </td>

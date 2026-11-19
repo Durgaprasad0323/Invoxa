@@ -223,6 +223,7 @@ export const initialBusinessProfile = {
   ifsc: 'HDFC0000240',
   branch: 'BKC Branch, Mumbai',
   upiId: 'krishna.pay@okhdfcbank',
+  upiQrUrl: '',
   invoicePrefix: 'INV-2026-',
   quotePrefix: 'QT-2026-'
 }

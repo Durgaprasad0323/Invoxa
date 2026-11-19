@@ -7,17 +7,32 @@ import InvoicePreview from './components/InvoicePreview'
 import AppWorkspace from './components/workspace/AppWorkspace'
 import SuperAdminDashboard from './components/admin/SuperAdminDashboard'
 import SubscriptionModal from './components/subscription/SubscriptionModal'
+import Icon from './components/ui/Icon'
 import { api } from './utils/apiClient'
 import { initialSampleInvoices } from './utils/sampleInvoices'
 import { initialCustomers, initialProducts, initialQuotations, initialBusinessProfile } from './utils/workspaceData'
 import { parseInvoicePrompt } from './utils/aiParser'
+import { getEffectivePlan } from './utils/plans'
+import { loadHtml2Pdf } from './utils/pdfGenerator'
 import './App.css'
+
+const normalizeProduct = product => ({
+  ...product,
+  rate: Number(product?.rate ?? product?.price ?? 0),
+  price: Number(product?.price ?? product?.rate ?? 0),
+  taxRate: Number(product?.taxRate ?? 18),
+  stock: Number(product?.stock ?? 0),
+  minStock: Number(product?.minStock ?? 0),
+  buyPrice: Number(product?.buyPrice ?? 0),
+  trackInventory: Boolean(product?.trackInventory)
+})
 
 export default function App() {
   // States: 'public' (landing page) | 'workspace' (Swipe-style logged-in app) | 'admin' (Super Admin platform control)
   const [appState, setAppState] = useState('public')
   const [currentView, setCurrentView] = useState('home') // for public: 'home' | 'editor'
   const [currentUser, setCurrentUser] = useState(null)
+  const [proTrial, setProTrial] = useState(null)
   const [workspaceTab, setWorkspaceTab] = useState('invoices')
   const [editorOrigin, setEditorOrigin] = useState(null)
 
@@ -32,7 +47,7 @@ export default function App() {
     try { return JSON.parse(localStorage.getItem('invoxa_customers')) || initialCustomers } catch { return initialCustomers }
   })
   const [products, setProducts] = useState(() => {
-    try { return JSON.parse(localStorage.getItem('invoxa_products')) || initialProducts } catch { return initialProducts }
+    try { return (JSON.parse(localStorage.getItem('invoxa_products')) || initialProducts).map(normalizeProduct) } catch { return initialProducts.map(normalizeProduct) }
   })
   const [businessProfile, setBusinessProfile] = useState(() => {
     try { return JSON.parse(localStorage.getItem('invoxa_profile')) || initialBusinessProfile } catch { return initialBusinessProfile }
@@ -44,6 +59,14 @@ export default function App() {
   const [isAuthOpen, setIsAuthOpen] = useState(false)
   const [authMode, setAuthMode] = useState('signin')
   const [isSubscribeOpen, setIsSubscribeOpen] = useState(false)
+  const [planToBuy, setPlanToBuy] = useState('pro')
+  const [billingCycleToBuy, setBillingCycleToBuy] = useState('yearly')
+  const planAccessUser = currentUser ? { ...currentUser, proTrial } : currentUser
+  const handleOpenSubscription = (plan = 'pro', billingCycle = 'yearly') => {
+    setPlanToBuy(plan)
+    setBillingCycleToBuy(billingCycle)
+    setIsSubscribeOpen(true)
+  }
 
   const handleOpenAuth = (mode = 'signin') => {
     setAuthMode(mode)
@@ -96,13 +119,14 @@ export default function App() {
       }).catch(() => {})
 
       api.getProducts().then(data => {
-        if (data.products) setProducts(data.products)
+        if (data.products) setProducts(data.products.map(normalizeProduct))
       }).catch(() => {})
     }
   }, [])
 
   // --- AUTH HANDLERS ---
   const handleLoginSuccess = async (user) => {
+    setProTrial(null)
     setCurrentUser(user)
     if (user && user.role === 'super_admin') {
       setAppState('admin')
@@ -113,6 +137,7 @@ export default function App() {
     // Refresh company, invoices, customers, products for this specific user
     try {
       const meData = await api.getMe()
+      if (meData.user) setCurrentUser(meData.user)
       if (meData.company) {
         setBusinessProfile(meData.company)
       } else {
@@ -128,7 +153,9 @@ export default function App() {
           bankName: '',
           accountNumber: '',
           ifsc: '',
-          upiId: ''
+          branch: '',
+          upiId: '',
+          upiQrUrl: ''
         })
       }
 
@@ -139,7 +166,7 @@ export default function App() {
       setCustomers(custData.customers || [])
 
       const prodData = await api.getProducts()
-      setProducts(prodData.products || [])
+      setProducts((prodData.products || []).map(normalizeProduct))
     } catch (err) {
       console.warn('Failed to load user specific data:', err.message)
     }
@@ -154,9 +181,10 @@ export default function App() {
     localStorage.removeItem('invoxa_products')
     localStorage.removeItem('invoxa_profile')
     setCurrentUser(null)
+    setProTrial(null)
     setInvoices(initialSampleInvoices)
     setCustomers(initialCustomers)
-    setProducts(initialProducts)
+    setProducts(initialProducts.map(normalizeProduct))
     setBusinessProfile(initialBusinessProfile)
     setAppState('public')
     setCurrentView('home')
@@ -189,18 +217,19 @@ export default function App() {
       invoiceNumber: nextNum,
       invoiceDate: prefill.invoiceDate || todayStr,
       dueDate: prefill.dueDate || dueStr,
+      docType: prefill.docType || 'invoice',
       status: prefill.status || 'Unpaid',
       theme: prefill.theme || 'emerald',
       seller: {
-        name: 'Krishna Enterprises',
-        gstin: '27AABCI1234F1Z5',
-        pan: 'AABCI1234F',
-        address: 'Shop No. 4, Commercial Complex',
-        city: 'Mumbai',
-        state: 'Maharashtra',
-        pincode: '400001',
-        phone: '+91 98200 12345',
-        email: 'billing@krishnaenterprises.com',
+        name: businessProfile.companyName || businessProfile.name || '',
+        gstin: businessProfile.gstin || '',
+        pan: businessProfile.pan || '',
+        address: businessProfile.address || '',
+        city: businessProfile.city || '',
+        state: businessProfile.state || '',
+        pincode: businessProfile.pincode || '',
+        phone: businessProfile.phone || '',
+        email: businessProfile.email || '',
         ...(prefill.seller || {})
       },
       client: {
@@ -229,10 +258,12 @@ export default function App() {
       notes: prefill.notes || 'Thank you for your business. Please make payments before due date.',
       terms: prefill.terms || 'Payment due within 15 days of invoice date. 18% p.a. interest applicable on late payments.',
       paymentDetails: {
-        bankName: 'HDFC Bank Ltd',
-        accountNumber: '50200012345678',
-        ifsc: 'HDFC0000240',
-        upiId: 'krishna@okhdfc',
+        bankName: businessProfile.bankName || '',
+        accountNumber: businessProfile.accountNumber || '',
+        ifsc: businessProfile.ifsc || '',
+        branch: businessProfile.branch || '',
+        upiId: businessProfile.upiId || '',
+        upiQrUrl: businessProfile.upiQrUrl || '',
         ...(prefill.paymentDetails || {})
       },
       layout: prefill.layout || 'classic',
@@ -242,7 +273,7 @@ export default function App() {
       sigType: prefill.sigType || 'script',
       verifiedSeal: prefill.verifiedSeal !== undefined ? prefill.verifiedSeal : true,
       logoImgUrl: prefill.logoImgUrl || null,
-      upiQrUrl: prefill.upiQrUrl || null,
+      upiQrUrl: prefill.upiQrUrl || businessProfile.upiQrUrl || null,
       originalPhotoUrl: prefill.originalPhotoUrl || null,
       renderedHtml: null
     }
@@ -258,36 +289,69 @@ export default function App() {
     const freshQuote = {
       ...baseInvoice,
       id: `qt_${Date.now()}`,
-      quoteNumber: nextNum,
-      quoteDate: new Date().toISOString().split('T')[0],
-      validUntil: new Date(Date.now() + 15 * 86400000).toISOString().split('T')[0],
+      invoiceNumber: prefill.invoiceNumber || prefill.quoteNumber || nextNum,
+      quoteNumber: prefill.quoteNumber || prefill.invoiceNumber || nextNum,
+      quoteDate: prefill.quoteDate || new Date().toISOString().split('T')[0],
+      validUntil: prefill.validUntil || prefill.dueDate || new Date(Date.now() + 15 * 86400000).toISOString().split('T')[0],
       status: 'Draft',
-      docType: 'quotation',
+      docType: 'quote',
       ...prefill,
       client: { ...baseInvoice.client, ...(prefill.client || {}) },
       items: prefill.items || baseInvoice.items
     }
+    setEditorOrigin('quotations')
     setActiveInvoice(freshQuote)
     setCurrentView('editor')
     window.scrollTo({ top: 0, behavior: 'smooth' })
   }
 
   const handleSaveInvoice = async (savedInvoice) => {
-    setInvoices(prev => {
-      const idx = prev.findIndex(inv => inv.id === savedInvoice.id)
-      if (idx >= 0) { const copy = [...prev]; copy[idx] = savedInvoice; return copy }
-      return [savedInvoice, ...prev]
-    })
-    setActiveInvoice(savedInvoice)
-
-    // Save to backend database
-    try {
-      if (localStorage.getItem('invoxa_token')) {
-        await api.createInvoice(savedInvoice)
+    const documentType = savedInvoice.docType === 'quotation' ? 'quote' : (savedInvoice.docType || 'invoice')
+    if (documentType === 'quote' || documentType === 'estimate') {
+      const existingQuotation = quotations.find(quotation => quotation.id === savedInvoice.id)
+      const numberPrefix = documentType === 'estimate' ? 'EST' : 'QT'
+      let quoteNumber = savedInvoice.quoteNumber || savedInvoice.invoiceNumber || `${numberPrefix}-2026-${String(quotations.length + 1).padStart(3, '0')}`
+      if (quotations.some(quotation => quotation.id !== savedInvoice.id && quotation.quoteNumber === quoteNumber)) {
+        let serial = quotations.length + 1
+        do {
+          quoteNumber = `${numberPrefix}-2026-${String(serial++).padStart(3, '0')}`
+        } while (quotations.some(quotation => quotation.id !== savedInvoice.id && quotation.quoteNumber === quoteNumber))
       }
-    } catch (err) {
-      console.warn('Backend sync error (saved locally):', err.message)
+      const quotation = {
+        ...savedInvoice,
+        docType: documentType,
+        invoiceNumber: quoteNumber,
+        quoteNumber,
+        quoteDate: savedInvoice.invoiceDate || savedInvoice.quoteDate,
+        validUntil: savedInvoice.validUntil || savedInvoice.dueDate
+      }
+      setQuotations(previous => [quotation, ...previous.filter(item => item.id !== quotation.id)])
+      setActiveInvoice(quotation)
+      const label = documentType === 'estimate' ? 'Estimate' : 'Quotation'
+      return {
+        savedToAccount: false,
+        tone: 'success',
+        message: `${label} saved to your Quotations list on this device.`,
+        invoice: quotation
+      }
     }
+
+    const invoiceDocument = { ...savedInvoice, docType: 'invoice' }
+    const token = localStorage.getItem('invoxa_token')
+    let invoiceToStore = invoiceDocument
+
+    if (token) {
+      const alreadyExists = invoices.some(invoice => invoice.id === invoiceDocument.id)
+      const response = alreadyExists
+        ? await api.updateInvoice(invoiceDocument.id, invoiceDocument)
+        : await api.createInvoice(invoiceDocument)
+      invoiceToStore = response.invoice || invoiceDocument
+    }
+
+    setInvoices(previous => [invoiceToStore, ...previous.filter(invoice => invoice.id !== invoiceToStore.id)])
+    setQuotations(previous => previous.filter(quotation => quotation.id !== invoiceToStore.id))
+    setActiveInvoice(invoiceToStore)
+    return { savedToAccount: Boolean(token), invoice: invoiceToStore }
   }
 
   const handleEditInvoiceInMixer = (inv) => {
@@ -297,13 +361,46 @@ export default function App() {
     setCurrentView('workspace')
   }
 
-  const handlePrint = (invoiceToPrint) => {
-    if (invoiceToPrint) {
-      setPrintTargetInvoice(invoiceToPrint)
-      setTimeout(() => { window.print(); setPrintTargetInvoice(null) }, 150)
-    } else {
+  const handlePrint = async (invoiceToPrint) => {
+    if (!invoiceToPrint) {
       window.print()
+      return
     }
+
+    setPrintTargetInvoice(invoiceToPrint)
+    await new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)))
+    if (document.fonts?.ready) await document.fonts.ready.catch(() => {})
+    const printable = document.getElementById('printable-invoice')
+    if (!printable) {
+      setPrintTargetInvoice(null)
+      return
+    }
+
+    const docType = invoiceToPrint.docType === 'quotation' ? 'quote' : invoiceToPrint.docType
+    const prefix = docType === 'estimate' ? 'Estimate' : docType === 'quote' ? 'Quotation' : 'Invoice'
+    const fileNumber = invoiceToPrint.quoteNumber || invoiceToPrint.invoiceNumber || 'draft'
+    try {
+      const html2pdf = await loadHtml2Pdf()
+      await html2pdf().set({
+          margin: 0,
+          filename: `${prefix}_${String(fileNumber).replace(/[^a-z0-9_-]/gi, '_')}.pdf`,
+          image: { type: 'jpeg', quality: 0.98 },
+          html2canvas: { scale: 2, useCORS: true, backgroundColor: '#ffffff' },
+          jsPDF: invoiceToPrint.layout === 'thermal'
+            ? { unit: 'px', format: [300, 1100] }
+            : invoiceToPrint.layout === 'phone'
+            ? { unit: 'px', format: [390, 1100] }
+            : { unit: 'mm', format: 'a4', orientation: 'portrait' }
+        }).from(printable).save()
+    } catch (error) {
+      console.warn('Invoice PDF download failed; opening print dialog instead.', error)
+      const clearPrintTarget = () => setPrintTargetInvoice(null)
+      window.addEventListener('afterprint', clearPrintTarget, { once: true })
+      window.print()
+      return
+    }
+      setPrintTargetInvoice(null)
+      return
   }
 
   // =========================================================
@@ -337,7 +434,7 @@ export default function App() {
             alignItems: 'center',
             borderBottom: '1px solid #1e3a8a'
           }}>
-            <span>👑 Super Admin Preview Mode: Viewing workspace as a business owner.</span>
+            <span> Super Admin Preview Mode: Viewing workspace as a business owner.</span>
             <button
               onClick={() => setAppState('admin')}
               style={{
@@ -351,7 +448,7 @@ export default function App() {
                 cursor: 'pointer'
               }}
             >
-              ← Back to Admin Command Center
+              <Icon name="arrowLeft" size={14} /> Back to Admin Command Center
             </button>
           </div>
         )}
@@ -373,23 +470,36 @@ export default function App() {
           onNewInvoice={handleStartNewInvoice}
           onNewQuotation={handleStartNewQuotation}
           onEditInvoice={handleEditInvoiceInMixer}
-          onEditQuotation={(q) => { setActiveInvoice(q); setCurrentView('editor'); setEditorOrigin(null); }}
+          onEditQuotation={(q) => {
+            setActiveInvoice({
+              ...q,
+              docType: q.docType === 'quotation' ? 'quote' : (q.docType || 'quote'),
+              invoiceNumber: q.invoiceNumber || q.quoteNumber,
+              invoiceDate: q.invoiceDate || q.quoteDate,
+              dueDate: q.dueDate || q.validUntil
+            })
+            setCurrentView('editor')
+            setEditorOrigin(null)
+          }}
           onPrintDocument={handlePrint}
           onBackToPublicSite={handleBackToPublicSite}
-          onSubscribe={() => setIsSubscribeOpen(true)}
+          onSubscribe={handleOpenSubscription}
+          onProTrialChange={setProTrial}
           currentUser={currentUser}
         />
 
         <SubscriptionModal
           isOpen={isSubscribeOpen}
           onClose={() => setIsSubscribeOpen(false)}
-          currentPlan={currentUser?.plan}
+          currentUser={currentUser}
+          initialPlan={planToBuy}
+          initialBillingCycle={billingCycleToBuy}
           onSubscriptionSuccess={(updatedUser) => setCurrentUser(updatedUser)}
         />
 
         {printTargetInvoice && (
           <div className="print-target-overlay">
-            <InvoicePreview invoice={printTargetInvoice} isPrintOnly={true} />
+            <InvoicePreview invoice={printTargetInvoice} isPrintOnly={true} isPro={getEffectivePlan(planAccessUser) !== 'free'} />
           </div>
         )}
       </>
@@ -405,12 +515,15 @@ export default function App() {
         <InvoiceEditor
           key={activeInvoice?.id || 'editor'}
           initialInvoice={activeInvoice}
+          isPro={getEffectivePlan(planAccessUser) !== 'free'}
           originTab={editorOrigin}
           onSave={handleSaveInvoice}
-          onBack={() => {
+          onBack={(document) => {
             if (appState === 'workspace') {
               if (editorOrigin === 'templates') {
                 setWorkspaceTab('templates')
+              } else if (editorOrigin === 'quotations' || ['quote', 'quotation', 'estimate'].includes(document?.docType)) {
+                setWorkspaceTab('quotations')
               }
               setCurrentView('workspace')
               setEditorOrigin(null)
@@ -418,11 +531,20 @@ export default function App() {
               setCurrentView('home')
             }
           }}
-          onPrint={() => handlePrint(activeInvoice)}
+          onPrint={(document) => handlePrint(document || activeInvoice)}
+          onUpgrade={handleOpenSubscription}
+        />
+        <SubscriptionModal
+          isOpen={isSubscribeOpen}
+          onClose={() => setIsSubscribeOpen(false)}
+          currentUser={currentUser}
+          initialPlan={planToBuy}
+          initialBillingCycle={billingCycleToBuy}
+          onSubscriptionSuccess={(updatedUser) => setCurrentUser(updatedUser)}
         />
         {printTargetInvoice && (
           <div className="print-target-overlay">
-            <InvoicePreview invoice={printTargetInvoice} isPrintOnly={true} />
+            <InvoicePreview invoice={printTargetInvoice} isPrintOnly={true} isPro={getEffectivePlan(planAccessUser) !== 'free'} />
           </div>
         )}
       </>
@@ -450,7 +572,7 @@ export default function App() {
 
       {printTargetInvoice && (
         <div className="print-target-overlay">
-          <InvoicePreview invoice={printTargetInvoice} isPrintOnly={true} />
+          <InvoicePreview invoice={printTargetInvoice} isPrintOnly={true} isPro={getEffectivePlan(planAccessUser) !== 'free'} />
         </div>
       )}
 

@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react'
 import { api } from '../../utils/apiClient'
 import { formatINR } from '../../utils/calculations'
+import Icon from '../ui/Icon'
 
 export default function SuperAdminDashboard({ user, onSwitchToWorkspace, onLogout }) {
   const [stats, setStats] = useState(null)
@@ -81,7 +82,7 @@ export default function SuperAdminDashboard({ user, onSwitchToWorkspace, onLogou
               gap: 6
             }}
           >
-            🏢 Open Billing Workspace →
+            Open Billing Workspace <Icon name="arrowUpRight" size={15} />
           </button>
           <button
             onClick={onLogout}
@@ -103,7 +104,7 @@ export default function SuperAdminDashboard({ user, onSwitchToWorkspace, onLogou
 
       {actionMsg && (
         <div style={{ background: '#1e3a8a', border: '1px solid #3b82f6', color: '#bfdbfe', padding: '10px 16px', borderRadius: 8, marginBottom: 20 }}>
-          ✓ {actionMsg}
+          <Icon name="checkCircle" size={15} /> {actionMsg}
         </div>
       )}
 
@@ -152,7 +153,7 @@ export default function SuperAdminDashboard({ user, onSwitchToWorkspace, onLogou
                 onClick={loadData}
                 style={{ background: '#334155', color: '#fff', border: 'none', borderRadius: 6, padding: '6px 12px', fontSize: '0.8rem', cursor: 'pointer' }}
               >
-                🔄 Refresh
+                 Refresh
               </button>
             </div>
 

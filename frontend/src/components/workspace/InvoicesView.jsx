@@ -1,6 +1,9 @@
 import React, { useState } from 'react'
 import { calculateInvoiceTotals, formatINR } from '../../utils/calculations'
 import { invoxaInvoiceToEngineTemplate, renderA4 } from '../../utils/engineRenderer'
+import { addFreeInvoiceWatermark } from '../../utils/invoiceWatermark'
+import { loadHtml2Pdf } from '../../utils/pdfGenerator'
+import Icon from '../ui/Icon'
 import '../../templateEngine.css'
 
 export default function InvoicesView({
@@ -10,62 +13,58 @@ export default function InvoicesView({
   onDeleteInvoice,
   onToggleStatus,
   onPrintInvoice,
-  searchQuery = ''
+  searchQuery = '',
+  isPro = false
 }) {
   const [statusFilter, setStatusFilter] = useState('all')
   const [downloadingPdfId, setDownloadingPdfId] = useState(null)
 
   // Direct clean PDF download matching exact saved invoice
   const handleDownloadPdf = async (inv) => {
-    if (typeof window.html2pdf !== 'undefined') {
-      setDownloadingPdfId(inv.id)
-      const element = document.createElement('div')
-      element.className = 'inv'
-      element.style.width = inv.layout === 'thermal' ? '300px' : inv.layout === 'phone' ? '390px' : '794px'
-      element.style.margin = '0 auto'
-      element.style.padding = '0'
-      element.style.backgroundColor = '#ffffff'
+    setDownloadingPdfId(inv.id)
+    const element = document.createElement('div')
+    element.className = 'inv'
+    element.style.width = inv.layout === 'thermal' ? '300px' : inv.layout === 'phone' ? '390px' : '794px'
+    element.style.margin = '0 auto'
+    element.style.padding = '0'
+    element.style.backgroundColor = '#ffffff'
 
-      if (inv.renderedHtml) {
-        element.innerHTML = inv.renderedHtml
-      } else {
-        const engineTemplate = invoxaInvoiceToEngineTemplate(inv)
-        element.innerHTML = renderA4(engineTemplate, {
-          l: inv.layout || 'band',
-          out: 'a4',
-          paper: inv.paperTexture || 'white',
-          stamp: inv.stampActive || 'brand',
-          status: inv.status?.toLowerCase() === 'paid' ? 'paid' : 'sent',
-          seal: true
-        })
-      }
-
-      document.body.appendChild(element)
-
-      try {
-        await window.html2pdf().set({
-          margin: 0,
-          filename: `${(inv.seller?.name || 'Invoice').replace(/\s+/g, '_')}_${inv.invoiceNumber || 'INV'}.pdf`,
-          image: { type: 'jpeg', quality: 0.98 },
-          html2canvas: { scale: 2, useCORS: true, backgroundColor: '#ffffff' },
-          jsPDF: inv.layout === 'thermal'
-            ? { unit: 'px', format: [300, 1100] }
-            : inv.layout === 'phone'
-            ? { unit: 'px', format: [390, 1100] }
-            : { unit: 'mm', format: 'a4', orientation: 'portrait' }
-        }).from(element).save()
-        element.remove()
-        setDownloadingPdfId(null)
-        return
-      } catch (err) {
-        console.warn('html2pdf error, fallback to print:', err)
-        element.remove()
-        setDownloadingPdfId(null)
-      }
+    if (inv.renderedHtml) {
+      element.innerHTML = inv.renderedHtml
+    } else {
+      const engineTemplate = invoxaInvoiceToEngineTemplate(inv)
+      element.innerHTML = renderA4(engineTemplate, {
+        l: inv.layout || 'band',
+        out: 'a4',
+        paper: inv.paperTexture || 'white',
+        stamp: inv.stampActive || 'brand',
+        status: inv.status?.toLowerCase() === 'paid' ? 'paid' : 'sent',
+        seal: true
+      })
     }
 
-    if (onPrintInvoice) {
-      onPrintInvoice(inv)
+    if (!isPro) addFreeInvoiceWatermark(element)
+
+    try {
+      const html2pdf = await loadHtml2Pdf()
+      document.body.appendChild(element)
+      await html2pdf().set({
+        margin: 0,
+        filename: `${(inv.seller?.name || 'Invoice').replace(/\s+/g, '_')}_${inv.invoiceNumber || 'INV'}.pdf`,
+        image: { type: 'jpeg', quality: 0.98 },
+        html2canvas: { scale: 2, useCORS: true, backgroundColor: '#ffffff' },
+        jsPDF: inv.layout === 'thermal'
+          ? { unit: 'px', format: [300, 1100] }
+          : inv.layout === 'phone'
+          ? { unit: 'px', format: [390, 1100] }
+          : { unit: 'mm', format: 'a4', orientation: 'portrait' }
+      }).from(element).save()
+    } catch (err) {
+      console.warn('Invoice PDF download failed, falling back to print:', err)
+      onPrintInvoice?.(inv)
+    } finally {
+      element.remove()
+      setDownloadingPdfId(null)
     }
   }
 
@@ -107,9 +106,9 @@ export default function InvoicesView({
     const clientName = inv.client?.name || 'Customer'
     const sellerName = inv.seller?.name || 'Krishna Enterprises'
     const invoiceNo = inv.invoiceNumber
-    const upiId = inv.paymentDetails?.upiId || 'krishna.pay@okhdfcbank'
+    const upiId = inv.paymentDetails?.upiId || inv.seller?.upiId || ''
 
-    const message = `Dear ${clientName},\n\nHere is your Tax Invoice ${invoiceNo} for ${formatINR(grandTotal)} from ${sellerName}.\n\nDue Date: ${inv.dueDate}\nStatus: ${inv.status.toUpperCase()}\n\nPay instantly via UPI: ${upiId}\n\nThank you for your business!`
+    const message = `Dear ${clientName},\n\nHere is your Tax Invoice ${invoiceNo} for ${formatINR(grandTotal)} from ${sellerName}.\n\nDue Date: ${inv.dueDate}\nStatus: ${inv.status.toUpperCase()}\n\n${upiId ? `Pay instantly via UPI: ${upiId}\n\n` : ''}Thank you for your business!`
     const url = `https://wa.me/?text=${encodeURIComponent(message)}`
     window.open(url, '_blank')
   }
@@ -121,7 +120,7 @@ export default function InvoicesView({
         <div className="metric-card">
           <div className="metric-header">
             <span className="metric-title">TOTAL SALES</span>
-            <span className="metric-icon">💰</span>
+            <span className="metric-icon"><Icon name="wallet" /></span>
           </div>
           <div className="metric-value">{formatINR(totals.totalSales)}</div>
           <span className="metric-sub">{invoices.length} invoices generated</span>
@@ -130,7 +129,7 @@ export default function InvoicesView({
         <div className="metric-card paid-metric">
           <div className="metric-header">
             <span className="metric-title">COLLECTED (PAID)</span>
-            <span className="metric-icon">✓</span>
+            <span className="metric-icon"><Icon name="checkCircle" /></span>
           </div>
           <div className="metric-value">{formatINR(totals.paidAmount)}</div>
           <span className="metric-sub">{totals.paidCount} payments received</span>
@@ -139,7 +138,7 @@ export default function InvoicesView({
         <div className="metric-card pending-metric">
           <div className="metric-header">
             <span className="metric-title">PENDING COLLECTION</span>
-            <span className="metric-icon">⏱</span>
+            <span className="metric-icon"><Icon name="clock" /></span>
           </div>
           <div className="metric-value">{formatINR(totals.unpaidAmount)}</div>
           <span className="metric-sub">{totals.unpaidCount} unpaid invoices</span>
@@ -177,7 +176,7 @@ export default function InvoicesView({
       {/* Invoices List / Empty State */}
       {filteredInvoices.length === 0 ? (
         <div className="swipe-empty-state">
-          <div className="empty-illustration">📄</div>
+          <div className="empty-illustration"><Icon name="fileText" size={28} /></div>
           <h3>Creating invoices lightning fast.</h3>
           <p>Create GST invoices in 10 seconds, share them on WhatsApp, and track payments.</p>
           <button className="swipe-cta-btn" onClick={() => onNewInvoice && onNewInvoice()}>
@@ -206,7 +205,7 @@ export default function InvoicesView({
                       onClick={() => onToggleStatus(inv.id, isPaid ? 'Unpaid' : 'Paid')}
                       title="Tap to toggle status"
                     >
-                      {isPaid ? '● Paid' : '○ Unpaid'}
+                      <Icon name={isPaid ? 'checkCircle' : 'clock'} size={13} /> {isPaid ? 'Paid' : 'Unpaid'}
                     </span>
                   </div>
 
@@ -222,7 +221,7 @@ export default function InvoicesView({
                   </div>
 
                   <div className="mic-dates-row">
-                    <span>📅 {inv.invoiceDate || 'Today'}</span>
+                    <span> {inv.invoiceDate || 'Today'}</span>
                     <span className={!isPaid ? 'due-alert' : ''}>
                       Due: {inv.dueDate || 'Immediate'}
                     </span>
@@ -234,7 +233,7 @@ export default function InvoicesView({
                       onClick={() => handleWhatsAppShare(inv)}
                       title="Share on WhatsApp"
                     >
-                      💬 WhatsApp
+                       WhatsApp
                     </button>
                     <button
                       className="mic-btn mic-pdf"
@@ -242,14 +241,14 @@ export default function InvoicesView({
                       disabled={downloadingPdfId === inv.id}
                       title="Download PDF"
                     >
-                      {downloadingPdfId === inv.id ? '⏳ PDF…' : '📥 PDF'}
+                      {downloadingPdfId === inv.id ? ' PDF…' : ' PDF'}
                     </button>
                     <button
                       className="mic-btn mic-edit"
                       onClick={() => onEditInvoice(inv)}
                       title="Edit in Template Mixer"
                     >
-                      ✏️ Edit
+                       Edit
                     </button>
                     <button
                       className="mic-btn mic-delete"
@@ -260,7 +259,7 @@ export default function InvoicesView({
                       }}
                       title="Delete"
                     >
-                      🗑️
+                      
                     </button>
                   </div>
                 </div>
@@ -319,7 +318,7 @@ export default function InvoicesView({
                           onClick={() => onToggleStatus(inv.id, isPaid ? 'Unpaid' : 'Paid')}
                           title="Click to toggle status"
                         >
-                          {isPaid ? '● Paid' : '○ Unpaid'}
+                          <Icon name={isPaid ? 'checkCircle' : 'clock'} size={13} /> {isPaid ? 'Paid' : 'Unpaid'}
                         </span>
                       </td>
                       <td>
@@ -329,7 +328,7 @@ export default function InvoicesView({
                             onClick={() => handleWhatsAppShare(inv)}
                             title="Share on WhatsApp"
                           >
-                            💬 WhatsApp
+                             WhatsApp
                           </button>
 
                           <button
@@ -338,7 +337,7 @@ export default function InvoicesView({
                             disabled={downloadingPdfId === inv.id}
                             title="Download PDF"
                           >
-                            {downloadingPdfId === inv.id ? '⏳ PDF…' : '📥 PDF'}
+                            {downloadingPdfId === inv.id ? ' PDF…' : ' PDF'}
                           </button>
 
                           <button
@@ -346,7 +345,7 @@ export default function InvoicesView({
                             onClick={() => onEditInvoice(inv)}
                             title="Edit Invoice"
                           >
-                            ✏️
+                            Edit
                           </button>
 
                           <button
@@ -358,7 +357,7 @@ export default function InvoicesView({
                             }}
                             title="Delete"
                           >
-                            🗑️
+                            Delete
                           </button>
                         </div>
                       </td>

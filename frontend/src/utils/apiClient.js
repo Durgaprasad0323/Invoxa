@@ -21,7 +21,9 @@ async function request(endpoint, options = {}) {
 
     const data = await res.json()
     if (!res.ok) {
-      throw new Error(data.error || 'API Request failed')
+      const error = new Error(data.error || 'API Request failed')
+      Object.assign(error, data)
+      throw error
     }
     return data
   } catch (err) {
@@ -98,11 +100,21 @@ export const api = {
     method: 'DELETE'
   }),
 
+  // Credit notes
+  getCreditNotes: () => request('/credit-notes'),
+  createCreditNote: (creditNote) => request('/credit-notes', {
+    method: 'POST',
+    body: JSON.stringify(creditNote)
+  }),
+  deleteCreditNote: (id) => request(`/credit-notes/${id}`, {
+    method: 'DELETE'
+  }),
+
   // Developer API keys and API integration
   getDeveloperKeys: () => request('/developer/keys'),
-  createDeveloperKey: (name) => request('/developer/keys', {
+  createDeveloperKey: (name, environment = 'live', developerInfo) => request('/developer/keys', {
     method: 'POST',
-    body: JSON.stringify({ name })
+    body: JSON.stringify({ name, environment, developerInfo })
   }),
   revokeDeveloperKey: (id) => request(`/developer/keys/${id}`, {
     method: 'DELETE'
@@ -123,6 +135,10 @@ export const api = {
     method: 'POST',
     body: JSON.stringify(cust)
   }),
+  updateCustomer: (id, cust) => request(`/customers/${id}`, {
+    method: 'PUT',
+    body: JSON.stringify(cust)
+  }),
   deleteCustomer: (id) => request(`/customers/${id}`, {
     method: 'DELETE'
   }),
@@ -131,6 +147,10 @@ export const api = {
   getProducts: () => request('/products'),
   createProduct: (prod) => request('/products', {
     method: 'POST',
+    body: JSON.stringify(prod)
+  }),
+  updateProduct: (id, prod) => request(`/products/${id}`, {
+    method: 'PUT',
     body: JSON.stringify(prod)
   }),
   deleteProduct: (id) => request(`/products/${id}`, {
@@ -149,12 +169,20 @@ export const api = {
   }),
 
   // Payments & Subscriptions
-  createSubscriptionOrder: (plan = 'pro') => request('/payments/order', {
+  createSubscriptionOrder: (plan = 'pro', billingCycle = 'yearly') => request('/payments/order', {
     method: 'POST',
-    body: JSON.stringify({ plan })
+    body: JSON.stringify({ plan, billingCycle })
   }),
-  verifySubscriptionPayment: (orderId, plan = 'pro') => request('/payments/verify', {
+  verifySubscriptionPayment: (payment) => request('/payments/verify', {
     method: 'POST',
-    body: JSON.stringify({ orderId, plan })
+    body: JSON.stringify(payment)
+  }),
+
+  // Free Pro trial
+  getProTrial: () => request('/plans/pro-trial'),
+  startProTrial: () => request('/plans/pro-trial/start', { method: 'POST' }),
+  consumeProTrialCreation: (usage) => request('/plans/pro-trial/creation', {
+    method: 'POST',
+    body: JSON.stringify(usage)
   })
 }

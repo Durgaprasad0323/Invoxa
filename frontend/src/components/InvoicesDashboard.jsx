@@ -1,5 +1,6 @@
 import React, { useState } from 'react'
 import { calculateInvoiceTotals, formatINR } from '../utils/calculations'
+import Icon from './ui/Icon'
 
 export default function InvoicesDashboard({
   invoices,
@@ -52,14 +53,14 @@ export default function InvoicesDashboard({
           <p>Monitor payments, track customer billings, and generate GST invoices.</p>
         </div>
         <button className="signup-btn" onClick={() => onNewInvoice && onNewInvoice()}>
-          + Create New Invoice ↗
+          + Create New Invoice 
         </button>
       </div>
 
       {/* Metrics Row */}
       <div className="stats-grid">
         <div className="stat-card">
-          <div className="stat-icon emerald">▤</div>
+          <div className="stat-icon emerald"><Icon name="fileText" /></div>
           <div>
             <span className="stat-label">Total Invoices</span>
             <strong className="stat-value">{invoices.length}</strong>
@@ -67,7 +68,7 @@ export default function InvoicesDashboard({
         </div>
 
         <div className="stat-card">
-          <div className="stat-icon blue">₹</div>
+          <div className="stat-icon blue"><Icon name="wallet" /></div>
           <div>
             <span className="stat-label">Total Billed</span>
             <strong className="stat-value">{formatINR(totalRevenue)}</strong>
@@ -75,7 +76,7 @@ export default function InvoicesDashboard({
         </div>
 
         <div className="stat-card">
-          <div className="stat-icon green">✓</div>
+          <div className="stat-icon green"><Icon name="checkCircle" /></div>
           <div>
             <span className="stat-label">Paid Revenue</span>
             <strong className="stat-value">{formatINR(paidRevenue)}</strong>
@@ -83,7 +84,7 @@ export default function InvoicesDashboard({
         </div>
 
         <div className="stat-card">
-          <div className="stat-icon amber">◷</div>
+          <div className="stat-icon amber"><Icon name="clock" /></div>
           <div>
             <span className="stat-label">Pending / Unpaid</span>
             <strong className="stat-value">{formatINR(unpaidRevenue)}</strong>
@@ -128,7 +129,7 @@ export default function InvoicesDashboard({
       <div className="invoices-table-card">
         {filteredInvoices.length === 0 ? (
           <div className="empty-state">
-            <span className="empty-icon">📄</span>
+            <span className="empty-icon"><Icon name="fileText" size={26} /></span>
             <h3>No invoices found</h3>
             <p>Create your first invoice using the AI generator or adjust your search.</p>
             <button className="primary-btn" style={{ marginTop: '16px' }} onClick={() => onNewInvoice && onNewInvoice()}>
@@ -177,7 +178,7 @@ export default function InvoicesDashboard({
                           onClick={() => onToggleStatus(inv.id)}
                           title="Click to toggle Paid/Unpaid"
                         >
-                          {isPaid ? '✓ Paid' : '● Unpaid'}
+                          <Icon name={isPaid ? 'checkCircle' : 'clock'} size={14} /> {isPaid ? 'Paid' : 'Unpaid'}
                         </button>
                       </td>
                       <td style={{ textAlign: 'right' }}>
@@ -187,21 +188,21 @@ export default function InvoicesDashboard({
                             onClick={() => onEditInvoice(inv)}
                             title="Edit & View"
                           >
-                            ✎ Edit
+                            <Icon name="edit" size={14} /> Edit
                           </button>
                           <button
                             className="action-btn print"
                             onClick={() => onPrintInvoice(inv)}
                             title="Print / PDF"
                           >
-                            🖨 Print
+                            <Icon name="printer" size={14} /> Print
                           </button>
                           <button
                             className="action-btn delete"
                             onClick={() => onDeleteInvoice(inv.id)}
                             title="Delete"
                           >
-                            🗑
+                            Delete
                           </button>
                         </div>
                       </td>

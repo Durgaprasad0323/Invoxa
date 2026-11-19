@@ -1,166 +1,92 @@
 import React, { useState } from 'react'
+import { formatINR } from '../../utils/calculations'
+import { getEffectivePlan, hasPlanAccess, PLAN_CATALOG } from '../../utils/plans'
+import Icon from '../ui/Icon'
 
-const SAMPLE_SUBSCRIPTIONS = [
-  { id: 'sub1', subId: 'SUB-2026-001', plan: 'Monthly Retainer', customer: 'TechSoft Solutions', amount: 25000, cycle: 'Monthly', nextDate: '2026-12-01', status: 'Active' },
-  { id: 'sub2', subId: 'SUB-2026-002', plan: 'Annual Maintenance', customer: 'Priya Sharma', amount: 18000, cycle: 'Annually', nextDate: '2027-01-15', status: 'Active' },
-  { id: 'sub3', subId: 'SUB-2026-003', plan: 'Quarterly SLA', customer: 'Arjun Mehta', amount: 12000, cycle: 'Quarterly', nextDate: '2026-12-31', status: 'Paused' },
-]
+const dateLabel = value => {
+  if (!value) return ''
+  const date = new Date(value)
+  if (Number.isNaN(date.getTime())) return ''
+  return new Intl.DateTimeFormat('en-IN', { dateStyle: 'medium' }).format(date)
+}
 
-export default function SubscriptionsView({ searchQuery = '' }) {
-  const [subs, setSubs] = useState(SAMPLE_SUBSCRIPTIONS)
-  const [showModal, setShowModal] = useState(false)
-  const [form, setForm] = useState({ plan: '', customer: '', amount: '', cycle: 'Monthly', nextDate: '' })
-
-  const filtered = subs.filter(s =>
-    s.customer.toLowerCase().includes(searchQuery.toLowerCase()) ||
-    s.plan.toLowerCase().includes(searchQuery.toLowerCase())
-  )
-
-  const handleAdd = () => {
-    if (!form.plan || !form.customer || !form.amount) return
-    const newSub = {
-      id: `sub_${Date.now()}`,
-      subId: `SUB-2026-${String(subs.length + 1).padStart(3, '0')}`,
-      plan: form.plan,
-      customer: form.customer,
-      amount: parseFloat(form.amount),
-      cycle: form.cycle,
-      nextDate: form.nextDate || '2026-12-01',
-      status: 'Active'
-    }
-    setSubs(prev => [newSub, ...prev])
-    setForm({ plan: '', customer: '', amount: '', cycle: 'Monthly', nextDate: '' })
-    setShowModal(false)
-  }
-
-  const toggleStatus = (id) => {
-    setSubs(prev => prev.map(s => s.id === id ? { ...s, status: s.status === 'Active' ? 'Paused' : 'Active' } : s))
-  }
-
-  const totalMRR = subs.filter(s => s.status === 'Active').reduce((sum, s) => {
-    if (s.cycle === 'Monthly') return sum + s.amount
-    if (s.cycle === 'Annually') return sum + s.amount / 12
-    if (s.cycle === 'Quarterly') return sum + s.amount / 3
-    return sum
-  }, 0)
+export default function SubscriptionsView({ currentUser = {}, proTrial, onChoosePlan }) {
+  const [billingCycle, setBillingCycle] = useState('yearly')
+  const currentPlan = getEffectivePlan(currentUser)
+  const storedPlan = currentUser.plan || 'free'
+  const expiryDate = dateLabel(currentUser.subscriptionExpiry)
+  const hasExpired = storedPlan !== 'free' && currentPlan === 'free'
 
   return (
-    <div className="workspace-view-container">
-      <div className="table-controls-bar">
+    <div className="workspace-view-container plans-page">
+      <div className="plans-page-heading">
         <div>
-          <h3>Subscriptions</h3>
-          <p className="section-subtext">Manage recurring billing plans — auto-generate invoices on each cycle.</p>
+          <span className="plans-eyebrow">INVOXA PLANS</span>
+          <h2>Choose the right plan for your business</h2>
+          <p>Compare the tools in each plan. Paid access starts after payment is verified; features marked as planned are not available yet.</p>
         </div>
-        <button className="btn-primary-action" onClick={() => setShowModal(true)}>+ New Subscription</button>
-      </div>
-
-      <div className="metrics-row">
-        <div className="metric-card">
-          <span className="metric-label">Active Subscriptions</span>
-          <span className="metric-value">{subs.filter(s => s.status === 'Active').length}</span>
-        </div>
-        <div className="metric-card">
-          <span className="metric-label">Monthly Recurring Revenue</span>
-          <span className="metric-value">₹{Math.round(totalMRR).toLocaleString('en-IN')}</span>
-        </div>
-        <div className="metric-card">
-          <span className="metric-label">Paused</span>
-          <span className="metric-value">{subs.filter(s => s.status === 'Paused').length}</span>
+        <div className="plans-current-card">
+          <span>YOUR CURRENT PLAN</span>
+          <strong>{PLAN_CATALOG.find(plan => plan.id === currentPlan)?.name || 'Free'}</strong>
+          {hasExpired ? <small>Your previous plan expired. Choose a plan to restore its features.</small> : expiryDate ? <small>Access through {expiryDate}</small> : <small>Core billing access</small>}
+          {proTrial?.active && <small>Free Pro trial: {proTrial.creationsRemaining} creations left · {proTrial.daysRemaining} days left.</small>}
+          {proTrial?.started && !proTrial.active && <small>Your free Pro trial has ended. Subscribe to keep Pro features.</small>}
         </div>
       </div>
 
-      <div className="swipe-table-wrap">
-        <table className="swipe-table">
-          <thead>
-            <tr>
-              <th>ID</th>
-              <th>Plan</th>
-              <th>Customer</th>
-              <th>Amount</th>
-              <th>Cycle</th>
-              <th>Next Invoice</th>
-              <th>Status</th>
-              <th>Actions</th>
-            </tr>
-          </thead>
-          <tbody>
-            {filtered.length === 0 ? (
-              <tr><td colSpan={8} className="empty-row">No subscriptions found.</td></tr>
-            ) : filtered.map(s => (
-              <tr key={s.id}>
-                <td><strong>{s.subId}</strong></td>
-                <td>{s.plan}</td>
-                <td>{s.customer}</td>
-                <td><strong>₹{s.amount.toLocaleString('en-IN')}</strong></td>
-                <td><span className="badge-pill template-pill">{s.cycle}</span></td>
-                <td>{s.nextDate}</td>
-                <td>
-                  <span className={`status-pill ${s.status === 'Active' ? 'pill-paid' : 'pill-draft'}`}>
-                    {s.status}
-                  </span>
-                </td>
-                <td>
-                  <div className="row-actions">
-                    <button className="row-action-btn" title={s.status === 'Active' ? 'Pause' : 'Activate'} onClick={() => toggleStatus(s.id)}>
-                      {s.status === 'Active' ? '⏸️' : '▶️'}
-                    </button>
-                    <button className="row-action-btn" title="WhatsApp reminder"
-                      onClick={() => window.open(`https://wa.me/?text=Hi+${s.customer},+your+subscription+${s.plan}+of+₹${s.amount}+renews+on+${s.nextDate}.`, '_blank')}>
-                      💬
-                    </button>
-                    <button className="row-action-btn danger" title="Cancel" onClick={() => setSubs(p => p.filter(x => x.id !== s.id))}>🗑️</button>
-                  </div>
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
+      <div className="plans-billing-switch" role="group" aria-label="Billing period">
+        <button type="button" aria-pressed={billingCycle === 'monthly'} className={billingCycle === 'monthly' ? 'selected' : ''} onClick={() => setBillingCycle('monthly')}>Monthly</button>
+        <button type="button" aria-pressed={billingCycle === 'yearly'} className={billingCycle === 'yearly' ? 'selected' : ''} onClick={() => setBillingCycle('yearly')}>Annual</button>
       </div>
 
-      {showModal && (
-        <div className="modal-overlay" onClick={() => setShowModal(false)}>
-          <div className="modal-box" onClick={e => e.stopPropagation()}>
-            <div className="modal-header">
-              <h3>New Subscription Plan</h3>
-              <button className="modal-close-btn" onClick={() => setShowModal(false)}>✕</button>
-            </div>
-            <div className="modal-body">
-              <div className="form-row">
-                <label>Plan Name *</label>
-                <input className="form-input" placeholder="e.g. Monthly Retainer"
-                  value={form.plan} onChange={e => setForm(p => ({ ...p, plan: e.target.value }))} />
+      <div className="plans-grid">
+        {PLAN_CATALOG.map(plan => {
+          const isCurrent = currentPlan === plan.id
+          const isIncluded = hasPlanAccess(currentUser, plan.id) && !isCurrent
+          const canBuy = plan.id !== 'free' && !isCurrent && !isIncluded
+          const price = billingCycle === 'monthly' ? plan.monthlyPrice : plan.yearlyPrice
+          return (
+            <article className={`plan-card ${plan.popular ? 'plan-card-popular' : ''} ${isCurrent ? 'plan-card-current' : ''}`} key={plan.id}>
+              {plan.popular && <span className="plan-popular-ribbon">MOST POPULAR</span>}
+              <div className="plan-card-top">
+                <div>
+                  <h3>{plan.name}</h3>
+                  <p>{plan.summary}</p>
+                </div>
+                {isCurrent && <span className="plan-current-badge">Current plan</span>}
               </div>
-              <div className="form-row">
-                <label>Customer *</label>
-                <input className="form-input" placeholder="e.g. TechSoft Solutions"
-                  value={form.customer} onChange={e => setForm(p => ({ ...p, customer: e.target.value }))} />
+              <div className="plan-price-row">
+                <strong>{price === 0 ? 'Free' : formatINR(price)}</strong>
+                {price > 0 && <span>/ {billingCycle === 'monthly' ? 'month' : 'year'}</span>}
               </div>
-              <div className="form-row">
-                <label>Amount per Cycle (₹) *</label>
-                <input className="form-input" type="number" placeholder="e.g. 25000"
-                  value={form.amount} onChange={e => setForm(p => ({ ...p, amount: e.target.value }))} />
-              </div>
-              <div className="form-row">
-                <label>Billing Cycle</label>
-                <select className="form-input" value={form.cycle} onChange={e => setForm(p => ({ ...p, cycle: e.target.value }))}>
-                  <option>Monthly</option>
-                  <option>Quarterly</option>
-                  <option>Annually</option>
-                </select>
-              </div>
-              <div className="form-row">
-                <label>First Invoice Date</label>
-                <input className="form-input" type="date"
-                  value={form.nextDate} onChange={e => setForm(p => ({ ...p, nextDate: e.target.value }))} />
-              </div>
-            </div>
-            <div className="modal-footer">
-              <button className="btn-secondary-action" onClick={() => setShowModal(false)}>Cancel</button>
-              <button className="btn-primary-action" onClick={handleAdd}>Create Subscription</button>
-            </div>
-          </div>
-        </div>
-      )}
+              <div className="plan-billing-note">{price > 0 ? `${billingCycle === 'monthly' ? 'One month' : 'One year'} of access · no automatic renewal` : 'Free forever · Pro trial starts on your first Pro feature'}</div>
+              <ul className="plan-feature-list">
+                {plan.features.map(feature => <li key={feature}><Icon name="checkCircle" size={14} />{feature}</li>)}
+              </ul>
+              {plan.plannedFeatures?.length > 0 && (
+                <div className="plan-planned-features">
+                  <strong>Planned for {plan.name} · not unlocked yet</strong>
+                  <ul>{plan.plannedFeatures.map(feature => <li key={feature}>{feature}</li>)}</ul>
+                  {plan.planNotes?.map(note => <p key={note}>{note}</p>)}
+                </div>
+              )}
+              <button
+                type="button"
+                className={`plan-choose-button ${plan.popular ? 'plan-choose-primary' : ''}`}
+                disabled={!canBuy}
+                onClick={() => canBuy && onChoosePlan?.(plan.id, billingCycle)}
+              >
+                {isCurrent ? 'Current plan' : isIncluded ? `Included with ${PLAN_CATALOG.find(entry => entry.id === currentPlan)?.name}` : plan.id === 'free' ? 'Included on signup' : `Choose ${plan.name}`}
+              </button>
+            </article>
+          )
+        })}
+      </div>
+
+      <div className="plans-access-note">
+        <strong>How plan access works</strong>
+        <p>Eligible free accounts get Pro access for 7 days or 3 Pro document creations, whichever comes first. The trial starts when a user first opens a Pro feature. Invoxa AI stays free. A paid plan activates only after payment is verified; cancelled or failed payments do not change the current plan.</p>
+      </div>
     </div>
   )
 }

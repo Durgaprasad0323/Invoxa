@@ -1,13 +1,14 @@
 import { createHash } from 'crypto'
 import { db } from '../config/db.js'
 import { ApiKeyModel } from '../models/ApiKey.js'
+import { getEffectivePlan } from './authMiddleware.js'
 
 const requestWindows = new Map()
 const MAX_REQUESTS_PER_MINUTE = 60
 
 export const verifyApiKey = (req, res, next) => {
   const authorization = req.headers.authorization || ''
-  const match = authorization.match(/^Bearer (invoxa_live_[A-Za-z0-9_-]+)$/)
+  const match = authorization.match(/^Bearer (invoxa_(live|test)_[A-Za-z0-9_-]+)$/)
   if (!match) {
     return res.status(401).json({ error: 'A valid Invoxa API key is required in the Authorization header.' })
   }
@@ -17,10 +18,27 @@ export const verifyApiKey = (req, res, next) => {
   if (!record) {
     return res.status(401).json({ error: 'Invalid or revoked API key.' })
   }
+  const environment = record.environment || 'live'
+  if (environment !== match[2]) {
+    return res.status(401).json({ error: 'API key environment does not match its stored record.' })
+  }
 
   const user = db.data.users.find(item => item.id === record.userId)
   if (!user || user.status === 'suspended' || user.status === 'disabled') {
     return res.status(401).json({ error: 'This API key is no longer active.' })
+  }
+
+  const effectivePlan = getEffectivePlan(user)
+  if (effectivePlan !== 'enterprise') {
+    const eligibleFreeKey = (db.data.apiKeys || [])
+      .filter(key => key.userId === user.id && !key.revokedAt && (key.environment || 'live') === 'live')
+      .sort((a, b) => new Date(a.createdAt) - new Date(b.createdAt))[0]
+    if (environment !== 'live' || eligibleFreeKey?.id !== record.id) {
+      return res.status(403).json({
+        code: 'ENTERPRISE_API_UPGRADE_REQUIRED',
+        error: 'Free access includes one Live Web integration key. Upgrade to Enterprise to use Sandbox or additional API keys.'
+      })
+    }
   }
 
   const now = Date.now()
@@ -46,8 +64,10 @@ export const verifyApiKey = (req, res, next) => {
     email: user.email,
     role: user.role,
     companyId: record.companyId,
-    companyName: user.companyName
+    companyName: user.companyName,
+    plan: user.plan || 'free',
+    subscriptionExpiry: user.subscriptionExpiry || null
   }
-  req.apiKey = { id: record.id, companyId: record.companyId }
+  req.apiKey = { id: record.id, companyId: record.companyId, environment }
   return next()
 }

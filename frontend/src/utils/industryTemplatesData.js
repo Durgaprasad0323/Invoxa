@@ -13,7 +13,7 @@ export const INDUSTRY_STARTERS = [
     name: 'Interior Designer & Architect',
     category: 'Services & Consulting',
     tag: 'Interior',
-    icon: '🏠',
+    icon: '',
     description: 'Design consultations, 3D renderings, and turnkey site execution with advance adjustment.',
     defaultTax: 18,
     specialFields: [
@@ -30,7 +30,7 @@ export const INDUSTRY_STARTERS = [
     name: 'Clinic & Healthcare Doctor',
     category: 'Healthcare & Pharma',
     tag: 'Healthcare',
-    icon: '🩺',
+    icon: '',
     description: 'OPD consultations, dental procedures, and health checks (GST Exempt under Notification 12/2017).',
     defaultTax: 0,
     specialFields: [
@@ -48,7 +48,7 @@ export const INDUSTRY_STARTERS = [
     name: 'Transporter & Logistics Fleet',
     category: 'Logistics & Transport',
     tag: 'Logistics',
-    icon: '🚛',
+    icon: '',
     description: 'Goods transport agency (GTA) with LR number, vehicle number, and 5% Reverse Charge (RCM).',
     defaultTax: 5,
     specialFields: [
@@ -67,7 +67,7 @@ export const INDUSTRY_STARTERS = [
     name: 'Civil Contractor & Builder',
     category: 'Manufacturing & Construction',
     tag: 'Construction',
-    icon: '🏗️',
+    icon: '',
     description: 'Running Account (RA) bills, work orders, site names, and retention money deductions.',
     defaultTax: 18,
     specialFields: [
@@ -86,7 +86,7 @@ export const INDUSTRY_STARTERS = [
     name: 'Gold & Diamond Jeweler',
     category: 'Retail & Trade',
     tag: 'Jewelry',
-    icon: '💎',
+    icon: '',
     description: 'Precious ornaments with Gross/Net Weight, Making Charges, Hallmark HUID, and 3% GST.',
     defaultTax: 3,
     specialFields: [
@@ -104,7 +104,7 @@ export const INDUSTRY_STARTERS = [
     name: 'Pharmacy & Chemist Retailer',
     category: 'Healthcare & Pharma',
     tag: 'Pharmacy',
-    icon: '💊',
+    icon: '',
     description: 'Medicines with Drug License 20B/21B, Batch numbers, and Expiry Dates (MM/YY).',
     defaultTax: 12,
     specialFields: [
@@ -121,7 +121,7 @@ export const INDUSTRY_STARTERS = [
     name: 'Freelancer & Digital Agency',
     category: 'Services & Consulting',
     tag: 'Freelance',
-    icon: '💻',
+    icon: '',
     description: 'Hourly rates, fixed milestones, GitHub/Figma deliveries, and international payments.',
     defaultTax: 18,
     specialFields: [
@@ -138,7 +138,7 @@ export const INDUSTRY_STARTERS = [
     name: 'Exporter & Global Trader',
     category: 'Retail & Trade',
     tag: 'Export',
-    icon: '🚢',
+    icon: '',
     description: 'Cross-border invoices with IEC Code, AD Code, Port of Loading, and LUT/Bond zero GST.',
     defaultTax: 0,
     specialFields: [
@@ -157,7 +157,7 @@ export const INDUSTRY_STARTERS = [
     name: 'Restaurant, Cafe & Cloud Kitchen',
     category: 'Retail & Trade',
     tag: 'F&B',
-    icon: '🍽️',
+    icon: '',
     description: 'Food bills with 5% GST without ITC, table numbers, and counter POS receipt format.',
     defaultTax: 5,
     specialFields: [
@@ -176,7 +176,7 @@ export const INDUSTRY_STARTERS = [
     name: 'Automobile Service Garage',
     category: 'Services & Consulting',
     tag: 'Automobile',
-    icon: '🚗',
+    icon: '',
     description: 'Vehicle servicing with Odometer KM reading, Chassis/VIN, and labor vs spare parts split.',
     defaultTax: 18,
     specialFields: [
@@ -195,7 +195,7 @@ export const INDUSTRY_STARTERS = [
     name: 'Chartered Accountant & Legal Firm',
     category: 'Services & Consulting',
     tag: 'CA/Legal',
-    icon: '⚖️',
+    icon: '',
     description: 'Statutory audit fees, GST return filing, income tax appeals, and ICAI UDIN number.',
     defaultTax: 18,
     specialFields: [
@@ -213,7 +213,7 @@ export const INDUSTRY_STARTERS = [
     name: 'Hotel, Resort & Hospitality',
     category: 'Services & Consulting',
     tag: 'Hospitality',
-    icon: '🏨',
+    icon: '',
     description: 'Room tariffs, check-in/out dates, guest ID details, and room-rate GST tiering.',
     defaultTax: 12,
     specialFields: [
@@ -231,7 +231,7 @@ export const INDUSTRY_STARTERS = [
     name: 'Retail Kirana & Supermarket',
     category: 'Retail & Trade',
     tag: 'Retail',
-    icon: '🛒',
+    icon: '',
     description: 'Barcode itemized counter billing with multiple GST slabs (0%, 5%, 12%, 18%).',
     defaultTax: 5,
     specialFields: [
@@ -249,7 +249,7 @@ export const INDUSTRY_STARTERS = [
     name: 'Wedding & Event Planner',
     category: 'Services & Consulting',
     tag: 'Events',
-    icon: '🎉',
+    icon: '',
     description: 'Venue setup, sound & lighting production, artist bookings, and date schedules.',
     defaultTax: 18,
     specialFields: [
@@ -266,7 +266,7 @@ export const INDUSTRY_STARTERS = [
     name: 'Gym & Fitness Center',
     category: 'Services & Consulting',
     tag: 'Fitness',
-    icon: '💪',
+    icon: '',
     description: 'Annual memberships, personal training packages, and member registration numbers.',
     defaultTax: 18,
     specialFields: [
@@ -283,7 +283,7 @@ export const INDUSTRY_STARTERS = [
     name: 'School & Coaching Institute',
     category: 'Services & Consulting',
     tag: 'Education',
-    icon: '📚',
+    icon: '',
     description: 'Term tuition fees, study materials, student roll number, and exam batches.',
     defaultTax: 18,
     specialFields: [
@@ -300,7 +300,7 @@ export const INDUSTRY_STARTERS = [
     name: 'Photography & Media Studio',
     category: 'Services & Consulting',
     tag: 'Photography',
-    icon: '📷',
+    icon: '',
     description: 'Candid wedding shoots, fashion portraits, drone video coverage, and deliverable links.',
     defaultTax: 18,
     specialFields: [
@@ -317,7 +317,7 @@ export const INDUSTRY_STARTERS = [
     name: 'Printing Press & Packaging',
     category: 'Manufacturing & Construction',
     tag: 'Printing',
-    icon: '🖨️',
+    icon: '',
     description: 'Offset & digital print jobs, paper GSM specs, carton packaging, and die-punch numbers.',
     defaultTax: 12,
     specialFields: [
@@ -334,7 +334,7 @@ export const INDUSTRY_STARTERS = [
     name: 'Solar Energy & EPC Installer',
     category: 'Manufacturing & Construction',
     tag: 'Solar',
-    icon: '☀️',
+    icon: '',
     description: 'Rooftop solar plant installations, subsidy compliance, inverter capacity, and net meter.',
     defaultTax: 12,
     specialFields: [
@@ -352,7 +352,7 @@ export const INDUSTRY_STARTERS = [
     name: 'Real Estate Broker & Consultant',
     category: 'Services & Consulting',
     tag: 'Real Estate',
-    icon: '🏢',
+    icon: '',
     description: 'Property brokerage, rental leasing agreement fees, and MahaRERA agent registration.',
     defaultTax: 18,
     specialFields: [
@@ -368,7 +368,7 @@ export const INDUSTRY_STARTERS = [
     name: 'Security Agency & Facility Guarding',
     category: 'Services & Consulting',
     tag: 'Security',
-    icon: '🛡️',
+    icon: '',
     description: 'Manned guarding, armed guards, bouncers, and facility housekeeping under PSARA license.',
     defaultTax: 18,
     specialFields: [
@@ -386,7 +386,7 @@ export const INDUSTRY_STARTERS = [
     name: 'Textiles, Saree & Garment Wholesaler',
     category: 'Retail & Trade',
     tag: 'Textiles',
-    icon: '👗',
+    icon: '',
     description: 'Fabric rolls, designer sarees, readymade apparel with 5% or 12% GST slabs and bale packaging.',
     defaultTax: 5,
     specialFields: [
@@ -403,7 +403,7 @@ export const INDUSTRY_STARTERS = [
     name: 'Travel Agency & Tour Operator',
     category: 'Services & Consulting',
     tag: 'Travel',
-    icon: '✈️',
+    icon: '',
     description: 'Domestic & international tour packages, flight bookings, hotel vouchers, and PNR tracking.',
     defaultTax: 5,
     specialFields: [
@@ -421,7 +421,7 @@ export const INDUSTRY_STARTERS = [
     name: 'Hardware, Sanitaryware & Building Materials',
     category: 'Retail & Trade',
     tag: 'Hardware',
-    icon: '🔩',
+    icon: '',
     description: 'Plumbing fittings, CPVC pipes, bathroom sanitaryware, and electrical switches with 18% & 28% GST.',
     defaultTax: 18,
     specialFields: [
@@ -438,7 +438,7 @@ export const INDUSTRY_STARTERS = [
     name: 'Agriculture, Seeds & Fertilizer Dealer',
     category: 'Retail & Trade',
     tag: 'Agriculture',
-    icon: '🌾',
+    icon: '',
     description: 'Certified seeds (0% GST), bio-fertilizers (5% GST), pesticides (18% GST), and dealer subsidy code.',
     defaultTax: 5,
     specialFields: [
@@ -456,7 +456,7 @@ export const INDUSTRY_STARTERS = [
     name: 'Courier, Cargo & Express Parcel Delivery',
     category: 'Logistics & Transport',
     tag: 'Courier',
-    icon: '📦',
+    icon: '',
     description: 'Air cargo, surface express parcel delivery, tracking docket (AWB) number, and volumetric weight.',
     defaultTax: 18,
     specialFields: [
@@ -474,7 +474,7 @@ export const INDUSTRY_STARTERS = [
     name: 'Chemical & Industrial Coating Manufacturer',
     category: 'Manufacturing & Construction',
     tag: 'Chemicals',
-    icon: '🧪',
+    icon: '',
     description: 'Solvents, epoxy floor resins, industrial pigments with MSDS sheet number and drum lot tracking.',
     defaultTax: 18,
     specialFields: [
@@ -492,7 +492,7 @@ export const INDUSTRY_STARTERS = [
     name: 'MEP Contractor & Electrical Plumbing Works',
     category: 'Manufacturing & Construction',
     tag: 'MEP Works',
-    icon: '⚡',
+    icon: '',
     description: 'Electrical wiring, plumbing pipelines, fire safety piping, and testing commissioning certificates.',
     defaultTax: 18,
     specialFields: [
@@ -509,7 +509,7 @@ export const INDUSTRY_STARTERS = [
     name: 'Multi-Specialty Hospital & Nursing Home',
     category: 'Healthcare & Pharma',
     tag: 'Hospital',
-    icon: '🏥',
+    icon: '',
     description: 'In-patient admissions, surgical OT charges, ICU bed tariffs, and mediclaim TPA cashless settlement.',
     defaultTax: 0,
     specialFields: [
@@ -527,7 +527,7 @@ export const INDUSTRY_STARTERS = [
     name: 'Outdoor & Event Catering Services',
     category: 'Services & Consulting',
     tag: 'Catering',
-    icon: '🍽️',
+    icon: '',
     description: 'Wedding buffets, corporate lunches, live food counters with 5% GST without Input Tax Credit.',
     defaultTax: 5,
     specialFields: [

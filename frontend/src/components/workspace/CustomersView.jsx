@@ -1,255 +1,83 @@
-import React, { useState } from 'react'
+import React, { useMemo, useState } from 'react'
 import { formatINR } from '../../utils/calculations'
+import Icon from '../ui/Icon'
 
-export default function CustomersView({
-  customers,
-  onAddCustomer,
-  onDeleteCustomer,
-  onBillCustomer,
-  searchQuery = ''
-}) {
-  const [showModal, setShowModal] = useState(false)
-  const [newCust, setNewCust] = useState({
-    name: '',
-    phone: '',
-    email: '',
-    gstin: '',
-    city: '',
-    state: 'Maharashtra',
-    address: ''
-  })
+const blankCustomer = () => ({ name: '', phone: '', email: '', gstin: '', city: '', state: '', pincode: '', address: '', creditPeriod: 'Due on receipt' })
 
-  const totalOutstanding = customers.reduce((sum, c) => sum + (c.outstandingDue || 0), 0)
+export default function CustomersView({ customers = [], onAddCustomer, onUpdateCustomer, onDeleteCustomer, onBillCustomer, searchQuery = '' }) {
+  const [showForm, setShowForm] = useState(false)
+  const [editingId, setEditingId] = useState(null)
+  const [form, setForm] = useState(blankCustomer)
+  const [filter, setFilter] = useState('All customers')
+  const [error, setError] = useState('')
+  const totalOutstanding = customers.reduce((sum, customer) => sum + (Number(customer.outstandingDue) || 0), 0)
+  const totalSales = customers.reduce((sum, customer) => sum + (Number(customer.totalPurchases) || 0), 0)
+  const visible = useMemo(() => {
+    const query = searchQuery.trim().toLowerCase()
+    return customers.filter(customer => {
+      const hasDue = Number(customer.outstandingDue) > 0
+      const statusMatches = filter === 'All customers' || (filter === 'With balance' && hasDue) || (filter === 'Clear balance' && !hasDue)
+      const searchMatches = !query || [customer.name, customer.phone, customer.email, customer.gstin, customer.city].some(value => String(value || '').toLowerCase().includes(query))
+      return statusMatches && searchMatches
+    }).sort((a, b) => String(a.name || '').localeCompare(String(b.name || '')))
+  }, [customers, filter, searchQuery])
 
-  const filteredCustomers = customers.filter((c) => {
-    const q = searchQuery.toLowerCase().trim()
-    if (!q) return true
-    return (
-      c.name.toLowerCase().includes(q) ||
-      c.phone.toLowerCase().includes(q) ||
-      (c.gstin && c.gstin.toLowerCase().includes(q))
-    )
-  })
-
-  const handleSave = (e) => {
-    e.preventDefault()
-    if (!newCust.name.trim()) return
-    onAddCustomer({
-      ...newCust,
-      id: `cust_${Date.now()}`,
-      totalPurchases: 0,
-      outstandingDue: 0
-    })
-    setNewCust({
-      name: '',
-      phone: '',
-      email: '',
-      gstin: '',
-      city: '',
-      state: 'Maharashtra',
-      address: ''
-    })
-    setShowModal(false)
+  const openNew = () => { setEditingId(null); setForm(blankCustomer()); setError(''); setShowForm(true) }
+  const openEdit = customer => { setEditingId(customer.id); setForm({ ...blankCustomer(), ...customer }); setError(''); setShowForm(true) }
+  const saveCustomer = event => {
+    event.preventDefault()
+    if (!form.name.trim()) { setError('Enter a customer or business name.'); return }
+    const saved = { ...form, id: editingId || `cust_${Date.now()}`, name: form.name.trim(), phone: form.phone.trim(), email: form.email.trim(), gstin: form.gstin.trim().toUpperCase(), outstandingDue: Number(form.outstandingDue) || 0, totalPurchases: Number(form.totalPurchases) || 0 }
+    if (editingId) onUpdateCustomer?.(editingId, saved)
+    else onAddCustomer?.(saved)
+    setShowForm(false)
+    setEditingId(null)
   }
-
-  const handleWhatsAppReminder = (c) => {
-    if (!c.outstandingDue) {
-      alert(`${c.name} has no outstanding balance. All payments clear!`)
-      return
-    }
-    const msg = `Dear ${c.name},\n\nThis is a polite reminder regarding your pending balance of ${formatINR(c.outstandingDue)} with Krishna Enterprises.\n\nPlease clear the dues at your earliest convenience via UPI or NEFT.\n\nThank you!`
-    const url = `https://wa.me/${c.phone.replace(/[^0-9]/g, '')}?text=${encodeURIComponent(msg)}`
-    window.open(url, '_blank')
+  const removeCustomer = customer => {
+    if (window.confirm(`Delete ${customer.name} from your customer list?`)) onDeleteCustomer?.(customer.id)
+  }
+  const sendReminder = customer => {
+    const phone = String(customer.phone || '').replace(/\D/g, '')
+    if (!phone) { window.alert('Add a phone number to this customer before sending a WhatsApp reminder.'); return }
+    const message = `Hello ${customer.name}, this is a reminder that ${formatINR(customer.outstandingDue)} is due on your Invoxa account. Please contact us if you have already paid. Thank you.`
+    window.open(`https://wa.me/${phone}?text=${encodeURIComponent(message)}`, '_blank', 'noopener,noreferrer')
   }
 
   return (
-    <div className="workspace-view-container">
-      {/* Metrics Row */}
-      <div className="metrics-grid">
-        <div className="metric-card">
-          <div className="metric-header">
-            <span className="metric-title">TOTAL CUSTOMERS</span>
-            <span className="metric-icon">👥</span>
-          </div>
-          <div className="metric-value">{customers.length} Clients</div>
-          <span className="metric-sub">Active client database</span>
-        </div>
-
-        <div className="metric-card pending-metric">
-          <div className="metric-header">
-            <span className="metric-title">TOTAL RECEIVABLES</span>
-            <span className="metric-icon">⚠️</span>
-          </div>
-          <div className="metric-value">{formatINR(totalOutstanding)}</div>
-          <span className="metric-sub">Payment pending from buyers</span>
-        </div>
+    <div className="workspace-view-container customers-page">
+      <div className="table-controls-bar purchases-heading"><div><h3>Customers</h3><p className="section-subtext">Manage customer contacts, balances and billing details.</p></div><button type="button" className="btn-primary-action" onClick={openNew}>+ Add Customer</button></div>
+      <div className="metrics-row purchases-metrics customers-metrics">
+        <div className="metric-card"><span className="metric-label">Customers</span><span className="metric-value">{customers.length}</span></div>
+        <div className="metric-card"><span className="metric-label">Total Sales</span><span className="metric-value">{formatINR(totalSales)}</span></div>
+        <div className="metric-card"><span className="metric-label">Outstanding</span><span className="metric-value purchases-due-value">{formatINR(totalOutstanding)}</span></div>
       </div>
+      <div className="purchases-toolbar"><div className="tab-filters" role="group" aria-label="Filter customers">{['All customers', 'With balance', 'Clear balance'].map(value => <button type="button" key={value} className={`filter-btn ${filter === value ? 'active' : ''}`} onClick={() => setFilter(value)}>{value}</button>)}</div><span className="purchases-count">{visible.length} {visible.length === 1 ? 'customer' : 'customers'}</span></div>
+      <div className="swipe-table-wrap purchases-table-wrap"><table className="swipe-table customers-table">
+        <thead><tr><th>Customer</th><th>Phone / Email</th><th>GSTIN</th><th>Location</th><th>Total Sales</th><th>Balance Due</th><th>Actions</th></tr></thead>
+        <tbody>{visible.length === 0 ? <tr><td colSpan={7} className="empty-row">{customers.length ? 'No customers match your search or filter.' : 'No customers yet. Add a customer to save their details for billing.'}</td></tr> : visible.map(customer => <tr key={customer.id}>
+          <td><div className="purchase-vendor-cell"><strong>{customer.name}</strong><small>{customer.address || ''}</small></div></td>
+          <td><div className="purchase-vendor-cell"><span>{customer.phone || '—'}</span><small>{customer.email || ''}</small></div></td>
+          <td>{customer.gstin || 'Unregistered'}</td><td>{[customer.city, customer.state].filter(Boolean).join(', ') || '—'}</td>
+          <td><strong>{formatINR(Number(customer.totalPurchases) || 0)}</strong></td><td><strong className={Number(customer.outstandingDue) > 0 ? 'purchases-due-value' : 'purchases-itc-value'}>{formatINR(Number(customer.outstandingDue) || 0)}</strong></td>
+          <td><div className="row-actions"><button type="button" className="row-action-btn" title="Edit customer" aria-label={`Edit ${customer.name}`} onClick={() => openEdit(customer)}><Icon name="edit" size={15} /></button>{Number(customer.outstandingDue) > 0 && <button type="button" className="row-action-btn" title="Send WhatsApp reminder" aria-label={`Send payment reminder to ${customer.name}`} onClick={() => sendReminder(customer)}><Icon name="message" size={15} /></button>}<button type="button" className="row-action-btn" title="Create invoice" aria-label={`Create invoice for ${customer.name}`} onClick={() => onBillCustomer?.(customer)}><Icon name="plus" size={15} /></button><button type="button" className="row-action-btn danger" title="Delete customer" aria-label={`Delete ${customer.name}`} onClick={() => removeCustomer(customer)}><Icon name="trash" size={15} /></button></div></td>
+        </tr>)}</tbody>
+      </table></div>
 
-      {/* Control Bar */}
-      <div className="table-controls-bar">
-        <h3>Customer Directory ({filteredCustomers.length})</h3>
-        <button className="primary-create-btn" onClick={() => setShowModal(true)}>
-          + Add New Customer
-        </button>
-      </div>
-
-      {/* Table */}
-      <div className="table-wrapper">
-        <table className="swipe-table">
-          <thead>
-            <tr>
-              <th>CUSTOMER NAME</th>
-              <th>PHONE & EMAIL</th>
-              <th>GSTIN</th>
-              <th>LOCATION</th>
-              <th>TOTAL PURCHASES</th>
-              <th>OUTSTANDING</th>
-              <th className="actions-header">ACTIONS</th>
-            </tr>
-          </thead>
-          <tbody>
-            {filteredCustomers.map((c) => (
-              <tr key={c.id} className="swipe-row">
-                <td>
-                  <strong className="cust-title">{c.name}</strong>
-                </td>
-                <td>
-                  <div className="contact-cell">
-                    <span>{c.phone}</span>
-                    <small>{c.email || '-'}</small>
-                  </div>
-                </td>
-                <td>
-                  <span className="gstin-badge">{c.gstin || 'Unregistered'}</span>
-                </td>
-                <td>{c.city ? `${c.city}, ${c.state}` : c.state}</td>
-                <td>
-                  <strong>{formatINR(c.totalPurchases || 0)}</strong>
-                </td>
-                <td>
-                  <span className={c.outstandingDue > 0 ? 'due-alert' : 'cleared-balance'}>
-                    {formatINR(c.outstandingDue || 0)}
-                  </span>
-                </td>
-                <td>
-                  <div className="action-buttons-group">
-                    <button
-                      className="action-icon-btn wa-btn"
-                      onClick={() => handleWhatsAppReminder(c)}
-                      title="Send payment reminder on WhatsApp"
-                    >
-                      💬 Reminder
-                    </button>
-
-                    <button
-                      className="action-icon-btn bill-btn"
-                      onClick={() => onBillCustomer(c)}
-                      title="Create invoice for this customer"
-                    >
-                      + Bill
-                    </button>
-
-                    <button
-                      className="action-icon-btn delete-btn"
-                      onClick={() => onDeleteCustomer(c.id)}
-                      title="Delete Customer"
-                    >
-                      🗑️
-                    </button>
-                  </div>
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
-
-      {/* Add Customer Modal */}
-      {showModal && (
-        <div className="modal-backdrop">
-          <div className="modal-card">
-            <div className="modal-header">
-              <h3>Add New Customer</h3>
-              <button className="modal-close-btn" onClick={() => setShowModal(false)}>✕</button>
-            </div>
-            <form onSubmit={handleSave} className="modal-form">
-              <div className="form-group">
-                <label>Customer / Business Name *</label>
-                <input
-                  type="text"
-                  required
-                  placeholder="e.g. Acme Innovations Pvt Ltd"
-                  value={newCust.name}
-                  onChange={(e) => setNewCust({ ...newCust, name: e.target.value })}
-                />
-              </div>
-
-              <div className="form-row two-col">
-                <div className="form-group">
-                  <label>Phone Number *</label>
-                  <input
-                    type="text"
-                    required
-                    placeholder="+91 98200 00000"
-                    value={newCust.phone}
-                    onChange={(e) => setNewCust({ ...newCust, phone: e.target.value })}
-                  />
-                </div>
-                <div className="form-group">
-                  <label>Email Address</label>
-                  <input
-                    type="email"
-                    placeholder="billing@acme.com"
-                    value={newCust.email}
-                    onChange={(e) => setNewCust({ ...newCust, email: e.target.value })}
-                  />
-                </div>
-              </div>
-
-              <div className="form-row two-col">
-                <div className="form-group">
-                  <label>Customer GSTIN (Optional)</label>
-                  <input
-                    type="text"
-                    placeholder="27AABCI1234F1Z5"
-                    value={newCust.gstin}
-                    onChange={(e) => setNewCust({ ...newCust, gstin: e.target.value })}
-                  />
-                </div>
-                <div className="form-group">
-                  <label>State *</label>
-                  <input
-                    type="text"
-                    required
-                    placeholder="Maharashtra"
-                    value={newCust.state}
-                    onChange={(e) => setNewCust({ ...newCust, state: e.target.value })}
-                  />
-                </div>
-              </div>
-
-              <div className="form-group">
-                <label>Billing Address</label>
-                <input
-                  type="text"
-                  placeholder="Street, Area, Pincode"
-                  value={newCust.address}
-                  onChange={(e) => setNewCust({ ...newCust, address: e.target.value })}
-                />
-              </div>
-
-              <div className="modal-actions">
-                <button type="button" className="btn-cancel" onClick={() => setShowModal(false)}>
-                  Cancel
-                </button>
-                <button type="submit" className="btn-save">
-                  Save Customer
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
+      {showForm && <div className="purchase-modal-backdrop" onMouseDown={event => { if (event.target === event.currentTarget) setShowForm(false) }}><form className="purchase-modal" onSubmit={saveCustomer} role="dialog" aria-modal="true" aria-labelledby="customer-modal-title">
+        <header className="purchase-modal-header"><div><span className="purchases-eyebrow">CUSTOMERS</span><h2 id="customer-modal-title">{editingId ? 'Edit customer' : 'Add customer'}</h2><p>Save the contact and billing details used on invoices.</p></div><button type="button" className="purchase-modal-close" aria-label="Close customer form" onClick={() => setShowForm(false)}>×</button></header>
+        <div className="purchase-modal-content"><div className="purchase-form-grid">
+          <label className="purchase-field purchase-field-wide">Customer or business name *<input autoFocus required value={form.name} onChange={event => setForm(current => ({ ...current, name: event.target.value }))} /></label>
+          <label className="purchase-field">Phone<input type="tel" value={form.phone} onChange={event => setForm(current => ({ ...current, phone: event.target.value }))} /></label>
+          <label className="purchase-field">Email<input type="email" value={form.email} onChange={event => setForm(current => ({ ...current, email: event.target.value }))} /></label>
+          <label className="purchase-field">GSTIN<input maxLength={15} value={form.gstin} onChange={event => setForm(current => ({ ...current, gstin: event.target.value.toUpperCase() }))} /></label>
+          <label className="purchase-field">State<input value={form.state} onChange={event => setForm(current => ({ ...current, state: event.target.value }))} /></label>
+          <label className="purchase-field">City<input value={form.city} onChange={event => setForm(current => ({ ...current, city: event.target.value }))} /></label>
+          <label className="purchase-field">Pincode<input inputMode="numeric" value={form.pincode} onChange={event => setForm(current => ({ ...current, pincode: event.target.value }))} /></label>
+          <label className="purchase-field">Payment terms<select value={form.creditPeriod} onChange={event => setForm(current => ({ ...current, creditPeriod: event.target.value }))}>{['Due on receipt', '7 days', '15 days', '30 days', '45 days'].map(value => <option key={value}>{value}</option>)}</select></label>
+          <label className="purchase-field purchase-field-wide">Billing address<input value={form.address} onChange={event => setForm(current => ({ ...current, address: event.target.value }))} /></label>
+        </div>{error && <p className="purchase-form-error" role="alert">{error}</p>}</div>
+        <footer className="purchase-modal-footer"><button type="button" className="btn-secondary-action" onClick={() => setShowForm(false)}>Cancel</button><button type="submit" className="btn-primary-action">{editingId ? 'Save changes' : 'Save customer'}</button></footer>
+      </form></div>}
     </div>
   )
 }

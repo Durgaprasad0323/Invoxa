@@ -38,7 +38,8 @@ const invoiceSchema = new mongoose.Schema({
     gstin: { type: String },
     email: { type: String },
     phone: { type: String },
-    address: { type: String }
+    address: { type: String },
+    pincode: { type: String }
   },
   items: [invoiceItemSchema],
   discountRate: { type: Number, default: 0 },
@@ -46,8 +47,11 @@ const invoiceSchema = new mongoose.Schema({
     bankName: { type: String },
     accountNumber: { type: String },
     ifsc: { type: String },
-    upiId: { type: String }
+    branch: { type: String },
+    upiId: { type: String },
+    upiQrUrl: { type: String }
   },
+  upiQrUrl: { type: String },
   notes: { type: String },
   terms: { type: String },
   createdAt: { type: Date, default: Date.now }

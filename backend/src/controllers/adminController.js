@@ -20,7 +20,7 @@ export const getPlatformStats = (req, res) => {
 
     // Subscriptions stats
     const paidSubscriptions = db.data.users.filter(u => u.plan === 'pro' || u.plan === 'enterprise').length
-    const subscriptionRevenue = paidSubscriptions * 2999 // Simulated ₹2,999/yr Pro plan
+    const subscriptionRevenue = paidSubscriptions * 2499 // Simulated annual Pro revenue
 
     return res.json({
       totalUsers,
@@ -64,13 +64,19 @@ export const updateUserPlan = (req, res) => {
   try {
     const { id } = req.params
     const { plan } = req.body
+    if (!['free', 'pro', 'enterprise'].includes(plan)) {
+      return res.status(400).json({ error: 'Choose a valid account plan.' })
+    }
 
     const user = db.data.users.find(u => u.id === id)
     if (!user) {
       return res.status(404).json({ error: 'User not found.' })
     }
 
-    user.plan = plan || 'free'
+    user.plan = plan
+    user.subscriptionExpiry = plan === 'free'
+      ? null
+      : new Date(Date.now() + 365 * 86400000).toISOString()
     db.save()
 
     return res.json({ message: `User plan updated to ${user.plan}`, user })

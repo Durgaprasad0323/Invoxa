@@ -33,7 +33,7 @@ export const getInvoiceById = (req, res) => {
   }
 }
 
-export const createInvoice = (req, res) => {
+export const createInvoice = async (req, res) => {
   try {
     const data = req.body
     const companyInvoices = db.data.invoices.filter(i => i.companyId === req.user.companyId)
@@ -55,17 +55,17 @@ export const createInvoice = (req, res) => {
       createdAt: new Date().toISOString()
     }
 
-    db.data.invoices.unshift(newInvoice)
-    db.save()
+    await db.persistInvoice(newInvoice)
+    db.data.invoices = [newInvoice, ...db.data.invoices.filter(invoice => invoice.id !== newInvoice.id)]
 
     return res.status(201).json({ message: 'Invoice created successfully!', invoice: newInvoice })
   } catch (err) {
     console.error('Create invoice error:', err)
-    return res.status(500).json({ error: 'Failed to create invoice.' })
+    return res.status(503).json({ error: 'Invoice could not be saved. Please try again when the database is available.' })
   }
 }
 
-export const updateInvoice = (req, res) => {
+export const updateInvoice = async (req, res) => {
   try {
     const { id } = req.params
     const idx = db.data.invoices.findIndex(inv => inv.id === id)
@@ -86,12 +86,13 @@ export const updateInvoice = (req, res) => {
       updatedAt: new Date().toISOString()
     }
 
+    await db.persistInvoice(updated)
     db.data.invoices[idx] = updated
-    db.save()
 
     return res.json({ message: 'Invoice updated successfully!', invoice: updated })
   } catch (err) {
-    return res.status(500).json({ error: 'Failed to update invoice.' })
+    console.error('Update invoice persistence error:', err)
+    return res.status(503).json({ error: 'Invoice changes could not be saved. Please try again when the database is available.' })
   }
 }
 

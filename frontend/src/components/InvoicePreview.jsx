@@ -3,9 +3,11 @@ import { QRCodeSVG } from 'qrcode.react'
 import { invoxaInvoiceToEngineTemplate, render, renderA4, LAYOUTS } from '../utils/engineRenderer'
 import { calculateInvoiceTotals, formatINR } from '../utils/calculations'
 import { numberToIndianWords } from '../utils/numberToWords'
+import { loadHtml2Pdf } from '../utils/pdfGenerator'
+import Icon from './ui/Icon'
 import '../templateEngine.css'
 
-export default function InvoicePreview({ invoice, previewRef, isPrintOnly = false, isLiveEditing = false }) {
+export default function InvoicePreview({ invoice, previewRef, isPrintOnly = false, isLiveEditing = false, isPro = false, onUpgrade }) {
   const [selectedLayout, setSelectedLayout] = useState(invoice?.layout || 'classic')
   const [paperTexture, setPaperTexture] = useState('white')
   const [stampActive, setStampActive] = useState('brand')
@@ -22,10 +24,6 @@ export default function InvoicePreview({ invoice, previewRef, isPrintOnly = fals
 
   // Direct PDF Download with html2pdf
   const handleDownloadPdf = async () => {
-    if (typeof window.html2pdf === 'undefined') {
-      window.print()
-      return
-    }
     setIsPdfDownloading(true)
     const element = document.getElementById('printable-invoice')
     if (!element) {
@@ -35,7 +33,8 @@ export default function InvoicePreview({ invoice, previewRef, isPrintOnly = fals
     }
 
     try {
-      await window.html2pdf().set({
+      const html2pdf = await loadHtml2Pdf()
+      await html2pdf().set({
         margin: 0,
         filename: `${(invoice.seller?.name || 'Invoice').replace(/\s+/g, '_')}_${invoice.invoiceNumber || 'INV'}.pdf`,
         image: { type: 'jpeg', quality: 0.98 },
@@ -46,7 +45,8 @@ export default function InvoicePreview({ invoice, previewRef, isPrintOnly = fals
           ? { unit: 'px', format: [390, 1100] }
           : { unit: 'mm', format: 'a4' }
       }).from(element).save()
-    } catch {
+    } catch (error) {
+      console.warn('Invoice PDF download failed; opening the print dialog instead.', error)
       window.print()
     } finally {
       setIsPdfDownloading(false)
@@ -79,15 +79,35 @@ export default function InvoicePreview({ invoice, previewRef, isPrintOnly = fals
       qrImg: invoice.paymentDetails?.upiQrUrl || invoice.upiQrUrl || null,
       reviewQrImg: invoice.reviewQrUrl || null,
       msg: invoice.reviewQrUrl ? 'review' : 'none',
-      msgText: 'Loved our work? Scan to rate us on Google ★★★★★',
-      status: invoice.status?.toLowerCase() === 'paid' ? 'paid' : 'sent',
+      msgText: 'Loved our work? Scan to rate us on Google',
+      status: invoice.status?.toLowerCase() === 'paid' ? 'paid' : invoice.status?.toLowerCase() === 'draft' ? 'draft' : 'sent',
       seal: invoice.verifiedSeal !== undefined ? invoice.verifiedSeal : true
     }
     return render(engineTemplate, opts)
   }
 
   const totals = calculateInvoiceTotals(invoice)
+  const documentType = invoice.docType === 'quotation'
+    ? 'quote'
+    : (['quote', 'estimate'].includes(invoice.docType) ? invoice.docType : 'invoice')
+  const documentTypeLabel = documentType === 'quote' ? 'Quotation' : documentType === 'estimate' ? 'Estimate' : 'Tax Invoice'
+  const paymentDetails = invoice.paymentDetails || {}
+  const upiId = paymentDetails.upiId || invoice.seller?.upiId || ''
+  const upiQrUrl = paymentDetails.upiQrUrl || invoice.upiQrUrl || ''
+  const hasUpiDetails = Boolean(upiId || upiQrUrl)
+  const bankDetails = [
+    ['Bank', paymentDetails.bankName],
+    ['A/C No', paymentDetails.accountNumber],
+    ['IFSC', paymentDetails.ifsc],
+    ['Branch', paymentDetails.branch]
+  ].filter(([, value]) => Boolean(value))
+  const hasPaymentDetails = bankDetails.length > 0 || hasUpiDetails
   const themeClass = `theme-${invoice.theme || 'emerald'}`
+  const freePlanWatermark = isPro ? null : (
+    <div className="invoice-free-plan-watermark" contentEditable={false}>
+      {!isPrintOnly && <button type="button" className="no-print" data-html2canvas-ignore="true" onClick={onUpgrade} aria-label="Upgrade to remove watermark">Remove watermark</button>}
+    </div>
+  )
 
   return (
     <div className="invoice-preview-wrapper" ref={previewRef}>
@@ -108,7 +128,7 @@ export default function InvoicePreview({ invoice, previewRef, isPrintOnly = fals
       }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
           <span style={{ fontSize: '0.8rem', fontWeight: 700, color: '#475569', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
-            🎨 Design Layout:
+             Design Layout:
           </span>
           <select
             className="form-input"
@@ -117,11 +137,11 @@ export default function InvoicePreview({ invoice, previewRef, isPrintOnly = fals
             onChange={(e) => setSelectedLayout(e.target.value)}
           >
             <optgroup label="Physical & Traditional Formats">
-              <option value="classic">📄 Traditional Indian GST Bill (Boxed Grid)</option>
-              <option value="receipt">🧾 Retail Store Cash Memo / Receipt</option>
-              <option value="thermal">🖨 80mm Thermal Slip</option>
+              <option value="classic"> Traditional Indian GST Bill (Boxed Grid)</option>
+              <option value="receipt"> Retail Store Cash Memo / Receipt</option>
+              <option value="thermal"> 80mm Thermal Slip</option>
               {invoice?.originalPhotoUrl && (
-                <option value="photo-clone">📷 Original Photo + Digital Copy</option>
+                <option value="photo-clone"> Original Photo + Digital Copy</option>
               )}
             </optgroup>
             <optgroup label="Modern Engine Layouts">
@@ -130,8 +150,8 @@ export default function InvoicePreview({ invoice, previewRef, isPrintOnly = fals
               ))}
             </optgroup>
             <optgroup label="Special Formats">
-              <option value="phone">📱 Mobile Phone View</option>
-              <option value="classic-invoxa">📄 Invoxa Classic</option>
+              <option value="phone"> Mobile Phone View</option>
+              <option value="classic-invoxa"> Invoxa Classic</option>
             </optgroup>
           </select>
 
@@ -182,7 +202,8 @@ export default function InvoicePreview({ invoice, previewRef, isPrintOnly = fals
             }}
             title="Toggle direct text editing on the preview invoice"
           >
-            {isDirectEditable ? '✎ Direct Edit: ON' : '👁 View Only'}
+            <Icon name={isDirectEditable ? 'edit' : 'fileText'} size={15} />
+            {isDirectEditable ? 'Direct Edit: ON' : 'View Only'}
           </button>
         </div>
 
@@ -192,7 +213,8 @@ export default function InvoicePreview({ invoice, previewRef, isPrintOnly = fals
           onClick={handleDownloadPdf}
           disabled={isPdfDownloading}
         >
-          {isPdfDownloading ? '⏳ Saving PDF…' : '⬇ Download PDF'}
+          <Icon name={isPdfDownloading ? 'clock' : 'download'} size={15} />
+          {isPdfDownloading ? 'Saving PDF…' : 'Download PDF'}
         </button>
       </div>
 
@@ -210,7 +232,7 @@ export default function InvoicePreview({ invoice, previewRef, isPrintOnly = fals
           alignItems: 'center',
           gap: 6
         }}>
-          <span>✨</span>
+          <Icon name="edit" size={16} />
           <span><strong>Manual Template Editor:</strong> Click and type anywhere directly on the invoice document below to customize text, names, numbers, or terms!</span>
         </div>
       )}
@@ -219,10 +241,10 @@ export default function InvoicePreview({ invoice, previewRef, isPrintOnly = fals
 
       {/* Render Selected View */}
       {selectedLayout === 'photo-clone' && invoice?.originalPhotoUrl ? (
-        <div id="printable-invoice" style={{ width: '100%', maxWidth: 840, margin: '0 auto', background: '#fff', borderRadius: 8, padding: 16, border: '1px solid #cbd5e1' }}>
+        <div id="printable-invoice" className={!isPro ? 'invoice-has-watermark' : ''} style={{ position: 'relative', width: '100%', maxWidth: 840, margin: '0 auto', background: '#fff', borderRadius: 8, padding: 16, border: '1px solid #cbd5e1' }}>
           <div style={{ marginBottom: 20, textAlign: 'center', borderBottom: '2px solid #e2e8f0', paddingBottom: 16 }}>
             <span style={{ fontSize: '0.82rem', fontWeight: 700, color: '#475569', textTransform: 'uppercase', letterSpacing: '0.05em', display: 'block', marginBottom: 8 }}>
-              📷 Original Uploaded Bill Photo:
+               Original Uploaded Bill Photo:
             </span>
             <img
               src={invoice.originalPhotoUrl}
@@ -232,21 +254,22 @@ export default function InvoicePreview({ invoice, previewRef, isPrintOnly = fals
           </div>
           <div style={{ textAlign: 'center', marginBottom: 12 }}>
             <span style={{ fontSize: '0.85rem', fontWeight: 700, color: '#15865a', textTransform: 'uppercase' }}>
-              ✓ Digitized Tax Invoice (Exact Matching Items &amp; Calculations)
+              <Icon name="checkCircle" size={16} /> Digitized Tax Invoice (Exact Matching Items &amp; Calculations)
             </span>
           </div>
           <div
-            className="inv"
+            className={`inv${!isPro ? ' invoice-has-watermark' : ''}`}
             contentEditable={isDirectEditable}
             suppressContentEditableWarning={true}
             style={{ width: '100%', outline: isDirectEditable ? '1.5px dashed #86efac' : 'none', borderRadius: 6 }}
             dangerouslySetInnerHTML={{ __html: renderA4(engineTemplate, { l: 'classic', out: 'a4', paper: paperTexture, stamp: stampActive, status: invoice.status?.toLowerCase() === 'paid' ? 'paid' : 'sent', seal: true, msg: invoice.reviewQrUrl ? 'review' : 'none', reviewQrImg: invoice.reviewQrUrl || null }) }}
           />
+          {freePlanWatermark}
         </div>
       ) : selectedLayout !== 'classic-invoxa' ? (
         <div
           id="printable-invoice"
-          className="inv"
+          className={`inv${!isPro ? ' invoice-has-watermark' : ''}`}
           contentEditable={isDirectEditable && !isPrintOnly}
           suppressContentEditableWarning={true}
           style={{
@@ -254,19 +277,21 @@ export default function InvoicePreview({ invoice, previewRef, isPrintOnly = fals
             maxWidth: selectedLayout === 'thermal' ? 300 : selectedLayout === 'phone' ? 340 : 800,
             margin: '0 auto',
             outline: (isDirectEditable && !isPrintOnly) ? '1.5px dashed #86efac' : 'none',
-            borderRadius: 6
+            borderRadius: 6,
+            position: 'relative'
           }}
         >
           <div dangerouslySetInnerHTML={{ __html: renderEngineHtml() }} />
+          {freePlanWatermark}
         </div>
       ) : (
         /* Classic Invoxa View */
         <div
-          className={`invoice-document ${themeClass}`}
+          className={`invoice-document ${themeClass}${!isPro ? ' invoice-watermarked' : ''}`}
           id="printable-invoice"
           contentEditable={isDirectEditable}
           suppressContentEditableWarning={true}
-          style={{ outline: isDirectEditable ? '1.5px dashed #86efac' : 'none', borderRadius: 6 }}
+          style={{ outline: isDirectEditable ? '1.5px dashed #86efac' : 'none', borderRadius: 6, position: 'relative' }}
         >
           <div className="doc-header">
             <div className="doc-seller">
@@ -286,23 +311,23 @@ export default function InvoicePreview({ invoice, previewRef, isPrintOnly = fals
             </div>
 
             <div className="doc-meta">
-              <div className="doc-type-title">TAX INVOICE</div>
+              <div className="doc-type-title">{documentTypeLabel.toUpperCase()}</div>
               <div className={`doc-status-badge ${invoice.status?.toLowerCase() === 'paid' ? 'status-paid' : 'status-unpaid'}`}>
                 {invoice.status?.toUpperCase() || 'UNPAID'}
               </div>
               <table className="doc-meta-table">
                 <tbody>
                   <tr>
-                    <td><strong>Invoice No:</strong></td>
-                    <td>{invoice.invoiceNumber}</td>
+                    <td><strong>{documentType === 'invoice' ? 'Invoice No' : documentType === 'quote' ? 'Quotation No' : 'Estimate No'}:</strong></td>
+                    <td>{invoice.invoiceNumber || invoice.quoteNumber}</td>
                   </tr>
                   <tr>
-                    <td><strong>Invoice Date:</strong></td>
-                    <td>{invoice.invoiceDate}</td>
+                    <td><strong>{documentType === 'invoice' ? 'Invoice Date' : documentType === 'quote' ? 'Quotation Date' : 'Estimate Date'}:</strong></td>
+                    <td>{invoice.invoiceDate || invoice.quoteDate}</td>
                   </tr>
                   <tr>
-                    <td><strong>Due Date:</strong></td>
-                    <td>{invoice.dueDate}</td>
+                    <td><strong>{documentType === 'invoice' ? 'Due Date' : 'Valid Until'}:</strong></td>
+                    <td>{documentType === 'invoice' ? invoice.dueDate : invoice.validUntil || invoice.dueDate}</td>
                   </tr>
                   <tr>
                     <td><strong>Place of Supply:</strong></td>
@@ -328,15 +353,15 @@ export default function InvoicePreview({ invoice, previewRef, isPrintOnly = fals
               </div>
             </div>
 
-            <div className="doc-payment-summary-box">
-              <span className="doc-box-title">PAYMENT DETAILS:</span>
-              <div className="doc-bank-info">
-                <p><strong>Bank:</strong> {invoice.paymentDetails?.bankName || 'HDFC Bank Ltd'}</p>
-                <p><strong>A/C No:</strong> {invoice.paymentDetails?.accountNumber || '50200012345678'}</p>
-                <p><strong>IFSC:</strong> {invoice.paymentDetails?.ifsc || 'HDFC0000240'}</p>
-                <p><strong>UPI ID:</strong> {invoice.paymentDetails?.upiId || 'invoxa@upi'}</p>
+            {hasPaymentDetails && (
+              <div className="doc-payment-summary-box">
+                <span className="doc-box-title">PAYMENT DETAILS:</span>
+                <div className="doc-bank-info">
+                  {bankDetails.map(([label, value]) => <p key={label}><strong>{label}:</strong> {value}</p>)}
+                  {upiId && <p><strong>UPI ID:</strong> {upiId}</p>}
+                </div>
               </div>
-            </div>
+            )}
           </div>
 
           <table className="doc-items-table">
@@ -441,25 +466,19 @@ export default function InvoicePreview({ invoice, previewRef, isPrintOnly = fals
           </div>
 
           <div className="doc-footer-row">
-            <div className="doc-upi-qr">
-              <div className="qr-box">
-                {(() => {
-                  const upiId = invoice.paymentDetails?.upiId || invoice.seller?.upiId || 'invoxa@okhdfcbank'
-                  const bizName = encodeURIComponent(invoice.seller?.name || 'Invoxa')
-                  const amount = totals.grandTotal.toFixed(2)
-                  const invNum = encodeURIComponent(invoice.invoiceNumber || 'INV')
-                  const upiUrl = `upi://pay?pa=${upiId}&pn=${bizName}&am=${amount}&cu=INR&tn=Invoice%20${invNum}`
-                  const customQr = invoice.paymentDetails?.upiQrUrl || invoice.upiQrUrl
-                  return customQr
-                    ? <img src={customQr} alt="UPI payment QR" style={{ width: 52, height: 52, objectFit: 'contain' }} />
-                    : <QRCodeSVG value={upiUrl} size={80} level="M" />
-                })()}
+            {hasUpiDetails && (
+              <div className="doc-upi-qr">
+                <div className="qr-box">
+                  {upiQrUrl
+                    ? <img src={upiQrUrl} alt="UPI payment QR" style={{ width: 52, height: 52, objectFit: 'contain' }} />
+                    : <QRCodeSVG value={`upi://pay?pa=${encodeURIComponent(upiId)}&pn=${encodeURIComponent(invoice.seller?.name || 'Business')}&am=${totals.grandTotal.toFixed(2)}&cu=INR&tn=Invoice%20${encodeURIComponent(invoice.invoiceNumber || 'INV')}`} size={80} level="M" />}
+                </div>
+                <div className="qr-info">
+                  <small>Scan to pay via any UPI app</small>
+                  {upiId && <strong>{upiId}</strong>}
+                </div>
               </div>
-              <div className="qr-info">
-                <small>Scan to pay via any UPI app</small>
-                <strong>{invoice.paymentDetails?.upiId || invoice.seller?.upiId || 'invoxa@okhdfcbank'}</strong>
-              </div>
-            </div>
+            )}
 
             {invoice.reviewQrUrl && (
               <div className="doc-upi-qr">
@@ -484,6 +503,7 @@ export default function InvoicePreview({ invoice, previewRef, isPrintOnly = fals
           <div className="doc-bottom-note">
             This is a computer-generated tax invoice verified under GST compliance.
           </div>
+          {freePlanWatermark}
         </div>
       )}
     </div>

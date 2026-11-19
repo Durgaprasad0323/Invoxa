@@ -55,7 +55,9 @@ export const register = (req, res) => {
       bankName: '',
       accountNumber: '',
       ifsc: '',
-      upiId: ''
+      branch: '',
+      upiId: '',
+      upiQrUrl: ''
     }
 
     db.data.users.push(newUser)
@@ -114,7 +116,9 @@ export const login = (req, res) => {
         role: user.role, // 'super_admin' or 'company_admin'
         companyName: user.companyName,
         companyId: user.companyId,
-        plan: user.plan
+        plan: user.plan,
+        billingCycle: user.billingCycle || 'yearly',
+        subscriptionExpiry: user.subscriptionExpiry || null
       },
       company
     })
@@ -140,7 +144,9 @@ export const getMe = (req, res) => {
         role: user.role,
         companyName: user.companyName,
         companyId: user.companyId,
-        plan: user.plan
+        plan: user.plan,
+        billingCycle: user.billingCycle || 'yearly',
+        subscriptionExpiry: user.subscriptionExpiry || null
       },
       company
     })
@@ -175,7 +181,9 @@ export const updateCompany = (req, res) => {
         bankName: req.body.bankName || '',
         accountNumber: req.body.accountNumber || '',
         ifsc: req.body.ifsc || '',
-        upiId: req.body.upiId || ''
+        branch: req.body.branch || '',
+        upiId: req.body.upiId || '',
+        upiQrUrl: req.body.upiQrUrl || ''
       }
       db.data.companies.push(company)
     } else {
@@ -287,7 +295,9 @@ export const verifyOtp = (req, res) => {
         bankName: '',
         accountNumber: '',
         ifsc: '',
-        upiId: ''
+        branch: '',
+        upiId: '',
+        upiQrUrl: ''
       }
 
       db.data.users.push(user)
@@ -361,7 +371,9 @@ export const googleAuth = async (req, res) => {
         bankName: '',
         accountNumber: '',
         ifsc: '',
-        upiId: ''
+        branch: '',
+        upiId: '',
+        upiQrUrl: ''
       }
 
       db.data.users.push(user)
@@ -507,7 +519,9 @@ export const verifyRegistrationOtp = async (req, res) => {
       bankName: '',
       accountNumber: '',
       ifsc: '',
-      upiId: ''
+      branch: '',
+      upiId: '',
+      upiQrUrl: ''
     }
 
     db.data.users.push(newUser)

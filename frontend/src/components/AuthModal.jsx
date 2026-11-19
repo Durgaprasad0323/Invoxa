@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react'
 import { api } from '../utils/apiClient'
+import Icon from './ui/Icon'
 
 export default function AuthModal({ isOpen, onClose, onLoginSuccess, initialMode = 'signin' }) {
   const [mode, setMode] = useState(initialMode) // 'signin' | 'signup' | 'forgot'
@@ -67,7 +68,7 @@ export default function AuthModal({ isOpen, onClose, onLoginSuccess, initialMode
       const cleanPhone = phoneNumber.replace(/[^0-9]/g, '').slice(-10)
 
       if (data.smsDelivered) {
-        setSentOtpHint(`📲 Official SMS dispatched to +91 ${cleanPhone}! Check your phone messages.`)
+        setSentOtpHint(` Official SMS dispatched to +91 ${cleanPhone}! Check your phone messages.`)
       } else {
         setErrorMsg(data.message || 'SMS delivery failed. Please check your SMS gateway settings.')
       }
@@ -329,14 +330,14 @@ export default function AuthModal({ isOpen, onClose, onLoginSuccess, initialMode
                 cursor: 'pointer'
               }}
             >
-              Create Account ✨
+              Create Account 
             </button>
           </div>
         )}
 
         {errorMsg && (
           <div style={{ background: '#fef2f2', border: '1px solid #fecaca', color: '#991b1b', padding: '10px 14px', borderRadius: 8, fontSize: '0.85rem', marginBottom: 14 }}>
-            ⚠️ {errorMsg}
+             {errorMsg}
           </div>
         )}
 
@@ -346,7 +347,7 @@ export default function AuthModal({ isOpen, onClose, onLoginSuccess, initialMode
         {mode === 'signup' && signupStep === 'form' && (
           <form onSubmit={handleStartSignup} className="auth-form">
             <div style={{ background: '#f0fdf4', border: '1px solid #bbf7d0', padding: '8px 12px', borderRadius: 6, fontSize: '0.82rem', color: '#166534', marginBottom: 14, display: 'flex', alignItems: 'center', gap: 6 }}>
-              <span>✉️</span>
+              <Icon name="mail" size={17} />
               <span>A real 6-digit verification code will be sent to your email.</span>
             </div>
 
@@ -408,7 +409,8 @@ export default function AuthModal({ isOpen, onClose, onLoginSuccess, initialMode
             </div>
 
             <button type="submit" className="primary-btn full-width" disabled={isSubmitting}>
-              {isSubmitting ? 'Sending Verification Code…' : 'Send Verification Code →'}
+              <Icon name={isSubmitting ? 'clock' : 'arrowUpRight'} size={15} />
+              {isSubmitting ? 'Sending Verification Code…' : 'Send Verification Code'}
             </button>
           </form>
         )}
@@ -419,7 +421,7 @@ export default function AuthModal({ isOpen, onClose, onLoginSuccess, initialMode
         {mode === 'signup' && signupStep === 'verify' && (
           <form onSubmit={handleVerifyAndRegister} className="auth-form">
             <div style={{ textAlign: 'center', marginBottom: 16 }}>
-              <div style={{ fontSize: '2rem', marginBottom: 4 }}>📬</div>
+              <div className="auth-status-mark"><Icon name="shieldCheck" size={22} /></div>
               <h4 style={{ margin: '0 0 6px', fontSize: '1.1rem', color: '#1e293b' }}>Verify Your Email</h4>
               <p style={{ margin: 0, fontSize: '0.85rem', color: '#64748b' }}>
                 We sent a 6-digit verification code to:
@@ -445,7 +447,7 @@ export default function AuthModal({ isOpen, onClose, onLoginSuccess, initialMode
             </div>
 
             <button type="submit" className="primary-btn full-width" disabled={isSubmitting}>
-              {isSubmitting ? 'Verifying & Creating Account…' : 'Verify & Enter Workspace 🚀'}
+              {isSubmitting ? 'Verifying & Creating Account…' : 'Verify & Enter Workspace '}
             </button>
 
             <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: 14, fontSize: '0.82rem' }}>
@@ -455,14 +457,14 @@ export default function AuthModal({ isOpen, onClose, onLoginSuccess, initialMode
                 disabled={isSubmitting}
                 style={{ background: 'none', border: 'none', color: '#2563eb', cursor: 'pointer', padding: 0, fontWeight: 600 }}
               >
-                🔄 Resend Code
+                 Resend Code
               </button>
               <button
                 type="button"
                 onClick={() => setSignupStep('form')}
                 style={{ background: 'none', border: 'none', color: '#64748b', cursor: 'pointer', padding: 0 }}
               >
-                ← Edit Details
+                <Icon name="arrowLeft" size={14} /> Edit Details
               </button>
             </div>
           </form>
@@ -479,7 +481,7 @@ export default function AuthModal({ isOpen, onClose, onLoginSuccess, initialMode
                 className={`role-btn ${tab === 'email' ? 'active' : ''}`}
                 onClick={() => setTab('email')}
               >
-                ✉️ Email &amp; Password
+                 Email &amp; Password
               </button>
               <button
                 type="button"
@@ -489,7 +491,7 @@ export default function AuthModal({ isOpen, onClose, onLoginSuccess, initialMode
                   setOtpStep(false)
                 }}
               >
-                📱 Mobile OTP
+                 Mobile OTP
               </button>
             </div>
 
@@ -511,7 +513,8 @@ export default function AuthModal({ isOpen, onClose, onLoginSuccess, initialMode
                 </div>
 
                 <button type="submit" className="primary-btn full-width" disabled={isSubmitting}>
-                  {isSubmitting ? 'Sending OTP…' : 'Send SMS OTP →'}
+                  <Icon name={isSubmitting ? 'clock' : 'arrowUpRight'} size={15} />
+                  {isSubmitting ? 'Sending OTP…' : 'Send SMS OTP'}
                 </button>
               </form>
             )}
@@ -520,7 +523,7 @@ export default function AuthModal({ isOpen, onClose, onLoginSuccess, initialMode
               <form onSubmit={handleVerifyOtp} className="auth-form">
                 {sentOtpHint && (
                   <div style={{ background: '#ecfdf5', border: '1px solid #a7f3d0', color: '#065f46', borderRadius: 6, padding: '8px 12px', fontSize: '0.85rem', marginBottom: 12, textAlign: 'center', fontWeight: 600 }}>
-                    ✨ {sentOtpHint}
+                     {sentOtpHint}
                   </div>
                 )}
                 <div className="form-group">
@@ -530,7 +533,7 @@ export default function AuthModal({ isOpen, onClose, onLoginSuccess, initialMode
                       style={{ fontSize: '0.78rem', color: '#2563eb', cursor: 'pointer', fontWeight: 600 }}
                       onClick={() => { setOtpStep(false); setOtp(''); setSentOtpHint(''); }}
                     >
-                      ← Change (+91 {phoneNumber})
+                      <Icon name="arrowLeft" size={14} /> Change (+91 {phoneNumber})
                     </span>
                   </div>
                   <input
@@ -546,7 +549,8 @@ export default function AuthModal({ isOpen, onClose, onLoginSuccess, initialMode
                 </div>
 
                 <button type="submit" className="primary-btn full-width" disabled={isSubmitting}>
-                  {isSubmitting ? 'Verifying…' : 'Verify & Enter Workspace →'}
+                  <Icon name={isSubmitting ? 'clock' : 'arrowUpRight'} size={15} />
+                  {isSubmitting ? 'Verifying…' : 'Verify & Enter Workspace'}
                 </button>
 
                 <div style={{ textAlign: 'center', marginTop: 10 }}>
@@ -601,7 +605,8 @@ export default function AuthModal({ isOpen, onClose, onLoginSuccess, initialMode
                 </div>
 
                 <button type="submit" className="primary-btn full-width" disabled={isSubmitting}>
-                  {isSubmitting ? 'Signing In…' : 'Sign In →'}
+                  <Icon name={isSubmitting ? 'clock' : 'arrowUpRight'} size={15} />
+                  {isSubmitting ? 'Signing In…' : 'Sign In'}
                 </button>
               </form>
             )}
@@ -614,7 +619,7 @@ export default function AuthModal({ isOpen, onClose, onLoginSuccess, initialMode
         {mode === 'forgot' && (
           <div className="auth-form">
             <div style={{ textAlign: 'center', marginBottom: 16 }}>
-              <div style={{ fontSize: '2rem', marginBottom: 4 }}>🔑</div>
+              <div className="auth-status-mark"><Icon name="key" size={22} /></div>
               <h4 style={{ margin: '0 0 6px', fontSize: '1.1rem', color: '#1e293b' }}>
                 {forgotStep === 'email' ? 'Forgot Password?' : 'Set New Password'}
               </h4>
@@ -640,7 +645,8 @@ export default function AuthModal({ isOpen, onClose, onLoginSuccess, initialMode
                 </div>
 
                 <button type="submit" className="primary-btn full-width" disabled={isSubmitting}>
-                  {isSubmitting ? 'Sending Reset Code…' : 'Send Reset Code to Email →'}
+                  <Icon name={isSubmitting ? 'clock' : 'arrowUpRight'} size={15} />
+                  {isSubmitting ? 'Sending Reset Code…' : 'Send Reset Code to Email'}
                 </button>
 
                 <div style={{ textAlign: 'center', marginTop: 14 }}>
@@ -648,7 +654,7 @@ export default function AuthModal({ isOpen, onClose, onLoginSuccess, initialMode
                     onClick={() => { setMode('signin'); setErrorMsg(''); }}
                     style={{ fontSize: '0.82rem', color: '#64748b', cursor: 'pointer', textDecoration: 'underline' }}
                   >
-                    ← Back to Sign In
+                    <Icon name="arrowLeft" size={14} /> Back to Sign In
                   </span>
                 </div>
               </form>
@@ -683,7 +689,7 @@ export default function AuthModal({ isOpen, onClose, onLoginSuccess, initialMode
                 </div>
 
                 <button type="submit" className="primary-btn full-width" disabled={isSubmitting}>
-                  {isSubmitting ? 'Resetting Password…' : 'Reset Password & Sign In 🚀'}
+                  {isSubmitting ? 'Resetting Password…' : 'Reset Password & Sign In '}
                 </button>
 
                 <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: 14, fontSize: '0.82rem' }}>
@@ -693,13 +699,13 @@ export default function AuthModal({ isOpen, onClose, onLoginSuccess, initialMode
                     disabled={isSubmitting}
                     style={{ background: 'none', border: 'none', color: '#2563eb', cursor: 'pointer', padding: 0, fontWeight: 600 }}
                   >
-                    🔄 Resend Code
+                     Resend Code
                   </button>
                   <span
                     onClick={() => { setMode('signin'); setErrorMsg(''); }}
                     style={{ color: '#64748b', cursor: 'pointer', textDecoration: 'underline' }}
                   >
-                    ← Back to Sign In
+                    <Icon name="arrowLeft" size={14} /> Back to Sign In
                   </span>
                 </div>
               </form>

@@ -2,13 +2,16 @@ import React, { useState, useEffect, useRef } from 'react'
 import InvoicePreview from './InvoicePreview'
 import { calculateInvoiceTotals, formatINR } from '../utils/calculations'
 import { STAMPS, SIGS } from '../utils/engineRenderer'
+import Icon from './ui/Icon'
 
 export default function InvoiceEditor({
   initialInvoice,
+  isPro = false,
   onSave,
   onBack,
   onPrint,
-  originTab
+  originTab,
+  onUpgrade
 }) {
   // Direct responsive invoice state for instant, lag-free typing
   const safeClone = (inv) => {
@@ -47,6 +50,15 @@ export default function InvoiceEditor({
   // View mode: 'split', 'edit', 'preview'
   const [viewMode, setViewMode] = useState('split')
   const [saveToast, setSaveToast] = useState('')
+  const [saveToastTone, setSaveToastTone] = useState('success')
+  const [isSavingInvoice, setIsSavingInvoice] = useState(false)
+  const documentType = currentInvoice.docType === 'quotation'
+    ? 'quote'
+    : (['quote', 'estimate'].includes(currentInvoice.docType) ? currentInvoice.docType : 'invoice')
+  const documentTypeLabel = documentType === 'quote' ? 'Quotation' : documentType === 'estimate' ? 'Estimate' : 'Tax Invoice'
+  const documentNumberLabel = documentType === 'quote' ? 'Quotation Number' : documentType === 'estimate' ? 'Estimate Number' : 'Invoice Number'
+  const documentDateLabel = documentType === 'quote' ? 'Quotation Date' : documentType === 'estimate' ? 'Estimate Date' : 'Invoice Date'
+  const dueDateLabel = documentType === 'invoice' ? 'Payment Due Date' : 'Valid Until'
 
   // Debounced history record to ensure typing NEVER loses focus or lags
   const recordHistory = (newInvoice) => {
@@ -89,7 +101,7 @@ export default function InvoiceEditor({
     const cloned = JSON.parse(JSON.stringify(initialSnapshotRef.current))
     setCurrentInvoice(cloned)
     recordHistory(cloned)
-    setSaveToast('✓ Reverted back to initial AI draft')
+    setSaveToast('Reverted back to the initial AI draft.')
     setTimeout(() => setSaveToast(''), 3000)
   }
 
@@ -98,7 +110,7 @@ export default function InvoiceEditor({
     const cloned = JSON.parse(JSON.stringify(initialSnapshotRef.current))
     setCurrentInvoice(cloned)
     recordHistory(cloned)
-    setSaveToast('✓ Reset to starter defaults')
+    setSaveToast('Reset to the starter defaults.')
     setTimeout(() => setSaveToast(''), 3000)
   }
 
@@ -113,7 +125,48 @@ export default function InvoiceEditor({
         }
       } else {
         updated[field] = value
+        if (documentType !== 'invoice' && field === 'invoiceNumber') updated.quoteNumber = value
+        if (documentType !== 'invoice' && field === 'invoiceDate') updated.quoteDate = value
       }
+      recordHistory(updated)
+      return updated
+    })
+  }
+
+  const handleDocumentTypeChange = (nextType) => {
+    setCurrentInvoice((prev) => {
+      const previousType = prev.docType === 'quotation' ? 'quote' : prev.docType || 'invoice'
+      const numberPrefix = { invoice: 'INV', quote: 'QT', estimate: 'EST' }[nextType]
+      const currentNumber = prev.invoiceNumber || prev.quoteNumber || 'INV-2026-001'
+      const updatedNumber = /^(INV|QT|EST)(-\d{4}-.*)$/i.test(currentNumber)
+        ? currentNumber.replace(/^(INV|QT|EST)/i, numberPrefix)
+        : currentNumber
+      const updated = {
+        ...prev,
+        renderedHtml: null,
+        docType: nextType,
+        invoiceNumber: updatedNumber
+      }
+      if (nextType !== 'invoice') {
+        if (previousType === 'invoice') updated.status = 'Draft'
+        updated.quoteNumber = updatedNumber
+        updated.quoteDate = prev.quoteDate || prev.invoiceDate
+        updated.validUntil = prev.validUntil || prev.dueDate
+      } else if (previousType !== 'invoice') {
+        updated.status = 'Unpaid'
+      }
+      recordHistory(updated)
+      return updated
+    })
+  }
+
+  const handleDueDateChange = (value) => {
+    if (documentType === 'invoice') {
+      handleFieldChange(null, 'dueDate', value)
+      return
+    }
+    setCurrentInvoice((prev) => {
+      const updated = { ...prev, dueDate: value, validUntil: value, renderedHtml: null }
       recordHistory(updated)
       return updated
     })
@@ -318,26 +371,44 @@ export default function InvoiceEditor({
     handleFieldChange(null, 'reviewQrUrl', null)
   }
 
-  const handleSaveInvoice = () => {
-    onSave(currentInvoice)
-    setSaveToast('✓ Invoice saved successfully to your dashboard!')
-    setTimeout(() => setSaveToast(''), 3000)
+  const handleSaveInvoice = async () => {
+    setIsSavingInvoice(true)
+    setSaveToast('')
+    try {
+      const result = await onSave(currentInvoice)
+      setSaveToastTone(result?.tone || (result?.savedToAccount === false ? 'warning' : 'success'))
+      setSaveToast(result?.message || (result?.savedToAccount === false
+        ? `${documentTypeLabel} saved in this browser only.`
+        : `${documentTypeLabel} saved to your account.`))
+      if (result?.invoice) {
+        setCurrentInvoice(result.invoice)
+        recordHistory(result.invoice)
+      }
+    } catch (error) {
+      setSaveToastTone('error')
+      setSaveToast(error.message || 'Invoice could not be saved. Please try again.')
+    } finally {
+      setIsSavingInvoice(false)
+      setTimeout(() => setSaveToast(''), 5000)
+    }
   }
 
   const handleWhatsAppShare = () => {
     const { grandTotal } = calculateInvoiceTotals(currentInvoice)
     const clientName = currentInvoice.client?.name || 'Valued Customer'
     const sellerName = currentInvoice.seller?.name || 'Invoxa'
-    const invoiceNo = currentInvoice.invoiceNumber || 'INV'
-    const upiId = currentInvoice.paymentDetails?.upiId || currentInvoice.seller?.upiId || 'krishna@okhdfc'
+    const documentNumber = currentInvoice.invoiceNumber || currentInvoice.quoteNumber || 'DOC-001'
+    const upiId = currentInvoice.paymentDetails?.upiId || currentInvoice.seller?.upiId || ''
+    const paymentMessage = documentType === 'invoice' && upiId
+      ? `Pay via UPI: upi://pay?pa=${encodeURIComponent(upiId)}&pn=${encodeURIComponent(sellerName)}&am=${grandTotal.toFixed(2)}&cu=INR\nUPI ID: ${upiId}\n\n`
+      : ''
 
     const message = `Hello ${clientName},\n\n` +
-      `Here are the invoice details from *${sellerName}*:\n` +
-      `📄 *Invoice No:* ${invoiceNo}\n` +
-      `💰 *Total Amount:* ${formatINR(grandTotal)}\n` +
-      `📅 *Due Date:* ${currentInvoice.dueDate || 'Immediate'}\n\n` +
-      `📱 *Pay via UPI:* upi://pay?pa=${upiId}&pn=${encodeURIComponent(sellerName)}&am=${grandTotal.toFixed(2)}&cu=INR\n` +
-      `UPI ID: *${upiId}*\n\n` +
+      `Here are the ${documentTypeLabel.toLowerCase()} details from ${sellerName}:\n` +
+      `${documentTypeLabel} No: ${documentNumber}\n` +
+      `Total Amount: ${formatINR(grandTotal)}\n` +
+      `${documentType === 'invoice' ? 'Due Date' : 'Valid Until'}: ${documentType === 'invoice' ? currentInvoice.dueDate || 'Immediate' : currentInvoice.validUntil || currentInvoice.dueDate || 'Not set'}\n\n` +
+      paymentMessage +
       `Thank you for your business!`
 
     const phone = (currentInvoice.client?.phone || '').replace(/[^0-9]/g, '')
@@ -355,8 +426,12 @@ export default function InvoiceEditor({
       {/* Top Action Toolbar */}
       <div className="editor-toolbar">
         <div className="toolbar-left">
-          <button className="back-link-btn" onClick={onBack}>
-            {originTab === 'templates' ? '← Back to Template & Mixers' : '← Back to Invoices'}
+          <button className="back-link-btn" onClick={() => onBack?.(currentInvoice)}>
+            {originTab === 'templates'
+              ? 'Back to Template & Mixers'
+              : originTab === 'quotations' || documentType !== 'invoice'
+                ? 'Back to Quotations'
+                : 'Back to Invoices'}
           </button>
           <div className="invoice-title-pill">
             <span>Editing:</span>
@@ -387,7 +462,7 @@ export default function InvoiceEditor({
             onClick={handleRevert}
             title="Revert back to initial AI draft"
           >
-            ↺ Revert to Draft
+            <Icon name="clock" size={15} /> Revert to Draft
           </button>
           <button
             className="history-btn reset"
@@ -395,7 +470,7 @@ export default function InvoiceEditor({
             title="Reset to starter defaults"
             style={{ color: '#0284c7' }}
           >
-            ⟲ Reset to Starter
+            <Icon name="refresh" size={15} /> Reset to Starter
           </button>
         </div>
 
@@ -437,23 +512,23 @@ export default function InvoiceEditor({
               padding: '7px 13px',
               cursor: 'pointer'
             }}
-            title="Send invoice details and UPI link via WhatsApp"
+            title={`Share ${documentTypeLabel} via WhatsApp`}
           >
-            💬 Share on WhatsApp
+            <Icon name="message" size={16} /> Share on WhatsApp
           </button>
 
-          <button className="secondary-btn print-btn" onClick={onPrint}>
-            🖨 Download PDF / Print
+          <button className="secondary-btn print-btn" onClick={() => onPrint?.(currentInvoice)}>
+            <Icon name="printer" size={16} /> Download {documentTypeLabel} PDF / Print
           </button>
 
-          <button className="primary-btn save-btn" onClick={handleSaveInvoice}>
-            💾 Save Invoice
+          <button className="primary-btn save-btn" onClick={handleSaveInvoice} disabled={isSavingInvoice}>
+            {isSavingInvoice ? 'Saving...' : `Save ${documentTypeLabel}`}
           </button>
         </div>
       </div>
 
       {saveToast && (
-        <div className="save-toast-banner">
+        <div className={`save-toast-banner ${saveToastTone}`} role="status">
           {saveToast}
         </div>
       )}
@@ -467,41 +542,61 @@ export default function InvoiceEditor({
             <div className="form-card">
               <div className="form-row three-col">
                 <div className="form-field">
-                  <label>Invoice Number</label>
+                  <label>Document Type</label>
+                  <select value={documentType} onChange={(e) => handleDocumentTypeChange(e.target.value)}>
+                    <option value="invoice">Tax Invoice</option>
+                    <option value="quote">Quotation</option>
+                    <option value="estimate">Estimate</option>
+                  </select>
+                </div>
+                <div className="form-field">
+                  <label>{documentNumberLabel}</label>
                   <input
                     type="text"
-                    value={currentInvoice.invoiceNumber || ''}
+                    value={currentInvoice.invoiceNumber || currentInvoice.quoteNumber || ''}
                     onChange={(e) => handleFieldChange(null, 'invoiceNumber', e.target.value)}
                   />
                 </div>
                 <div className="form-field">
-                  <label>Invoice Date</label>
+                  <label>{documentDateLabel}</label>
                   <input
                     type="date"
-                    value={currentInvoice.invoiceDate || ''}
+                    value={currentInvoice.invoiceDate || currentInvoice.quoteDate || ''}
                     onChange={(e) => handleFieldChange(null, 'invoiceDate', e.target.value)}
                   />
                 </div>
-                <div className="form-field">
-                  <label>Payment Status</label>
-                  <select
-                    value={currentInvoice.status || 'Unpaid'}
-                    onChange={(e) => handleFieldChange(null, 'status', e.target.value)}
-                  >
-                    <option value="Unpaid">Unpaid</option>
-                    <option value="Paid">Paid</option>
-                    <option value="Pending">Pending</option>
-                  </select>
-                </div>
               </div>
 
-              <div className="form-row two-col" style={{ marginTop: '12px' }}>
+              <div className="form-row three-col" style={{ marginTop: '12px' }}>
                 <div className="form-field">
-                  <label>Payment Due Date</label>
+                  <label>{documentType === 'invoice' ? 'Payment Status' : 'Document Status'}</label>
+                  <select
+                    value={currentInvoice.status || (documentType === 'invoice' ? 'Unpaid' : 'Draft')}
+                    onChange={(e) => handleFieldChange(null, 'status', e.target.value)}
+                  >
+                    {documentType === 'invoice' ? (
+                      <>
+                        <option value="Unpaid">Unpaid</option>
+                        <option value="Paid">Paid</option>
+                        <option value="Pending">Pending</option>
+                      </>
+                    ) : (
+                      <>
+                        <option value="Draft">Draft</option>
+                        <option value="Sent">Sent</option>
+                        <option value="Accepted">Accepted</option>
+                        <option value="Rejected">Rejected</option>
+                        <option value="Converted">Converted</option>
+                      </>
+                    )}
+                  </select>
+                </div>
+                <div className="form-field">
+                  <label>{dueDateLabel}</label>
                   <input
                     type="date"
-                    value={currentInvoice.dueDate || ''}
-                    onChange={(e) => handleFieldChange(null, 'dueDate', e.target.value)}
+                    value={documentType === 'invoice' ? currentInvoice.dueDate || '' : currentInvoice.validUntil || currentInvoice.dueDate || ''}
+                    onChange={(e) => handleDueDateChange(e.target.value)}
                   />
                 </div>
                 <div className="form-field">
@@ -510,9 +605,9 @@ export default function InvoiceEditor({
                     value={currentInvoice.theme || 'emerald'}
                     onChange={(e) => handleFieldChange(null, 'theme', e.target.value)}
                   >
-                    <option value="emerald">✦ Invoxa Emerald (Modern)</option>
-                    <option value="navy">✦ Corporate Navy Blue</option>
-                    <option value="charcoal">✦ Minimal Monochrome</option>
+                    <option value="emerald">Invoxa Emerald (Modern)</option>
+                    <option value="navy">Corporate Navy Blue</option>
+                    <option value="charcoal">Minimal Monochrome</option>
                   </select>
                 </div>
               </div>
@@ -520,7 +615,7 @@ export default function InvoiceEditor({
 
             {/* Bill From (Seller / Your Business Details) */}
             <div className="form-card">
-              <h4 className="card-title">🏪 Billed By (Your Business Details)</h4>
+              <h4 className="card-title"><Icon name="building" size={18} /> Billed By (Your Business Details)</h4>
               <div className="form-row two-col">
                 <div className="form-field">
                   <label>Business / Company Name</label>
@@ -564,13 +659,13 @@ export default function InvoiceEditor({
 
             {/* Branding, Logo, Company Seal & Signature Card */}
             <div className="form-card">
-              <h4 className="card-title">🎨 Branding, Seal, Stamp &amp; Signature</h4>
+              <h4 className="card-title"><Icon name="image" size={18} /> Branding, Seal, Stamp &amp; Signature</h4>
 
               <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))', gap: '14px' }}>
                 {/* 1. Company Logo */}
                 <div style={{ background: '#f8fafc', padding: '12px', borderRadius: '10px', border: '1px solid #e2e8f0' }}>
                   <label style={{ fontWeight: 600, fontSize: '0.82rem', color: '#334155', display: 'block', marginBottom: '6px' }}>
-                    🏢 Company Logo
+                    <Icon name="image" size={15} /> Company Logo
                   </label>
                   {currentInvoice.logoImgUrl ? (
                     <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
@@ -580,7 +675,7 @@ export default function InvoiceEditor({
                         style={{ width: 48, height: 48, objectFit: 'contain', background: '#fff', borderRadius: 8, border: '1px solid #cbd5e1', padding: 4 }}
                       />
                       <div>
-                        <span style={{ fontSize: '0.78rem', color: '#15865a', fontWeight: 600, display: 'block' }}>✓ Logo Uploaded</span>
+                        <span style={{ fontSize: '0.78rem', color: '#15865a', fontWeight: 600, display: 'flex', alignItems: 'center', gap: 4 }}><Icon name="checkCircle" size={14} /> Logo uploaded</span>
                         <button
                           type="button"
                           onClick={handleRemoveLogo}
@@ -608,7 +703,7 @@ export default function InvoiceEditor({
                           cursor: 'pointer'
                         }}
                       >
-                        <span>⬆</span> Upload Company Logo
+                        Upload Company Logo
                       </label>
                       <input
                         id="editorLogoUpload"
@@ -628,7 +723,7 @@ export default function InvoiceEditor({
                 <div style={{ background: '#f8fafc', padding: '12px', borderRadius: '10px', border: '1px solid #e2e8f0' }}>
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 }}>
                     <label style={{ fontWeight: 600, fontSize: '0.82rem', color: '#334155', margin: 0 }}>
-                      💮 Company Seal / Stamp
+                       Company Seal / Stamp
                     </label>
                     <span style={{ fontSize: '0.72rem', color: '#64748b' }}>Circular Seal</span>
                   </div>
@@ -663,14 +758,14 @@ export default function InvoiceEditor({
                       onChange={(e) => handleVerifiedSealChange(e.target.checked)}
                       style={{ width: 'auto', margin: 0 }}
                     />
-                    <span>✓ Tamper-Proof Verification Seal</span>
+                    <span style={{ display: 'inline-flex', alignItems: 'center', gap: 5 }}><Icon name="shieldCheck" size={15} /> Tamper-Proof Verification Seal</span>
                   </label>
                 </div>
 
                 {/* 3. Signature Style */}
                 <div style={{ background: '#f8fafc', padding: '12px', borderRadius: '10px', border: '1px solid #e2e8f0' }}>
                   <label style={{ fontWeight: 600, fontSize: '0.82rem', color: '#334155', display: 'block', marginBottom: 6 }}>
-                    ✍️ Signature Style &amp; Sign
+                     Signature Style &amp; Sign
                   </label>
                   <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginBottom: 8 }}>
                     {SIGS.map(([id, n]) => (
@@ -725,7 +820,7 @@ export default function InvoiceEditor({
                                 cursor: 'pointer'
                               }}
                             >
-                              📷 Upload Sign Image
+                               Upload Sign Image
                             </label>
                             <input
                               id="editorSigUpload"
@@ -776,7 +871,7 @@ export default function InvoiceEditor({
 
             {/* Bill To (Customer Details) */}
             <div className="form-card">
-              <h4 className="card-title">🏢 Billed To (Customer Details)</h4>
+              <h4 className="card-title"><Icon name="users" size={18} /> Billed To (Customer Details)</h4>
               <div className="form-row two-col">
                 <div className="form-field">
                   <label>Client / Company Name</label>
@@ -839,7 +934,7 @@ export default function InvoiceEditor({
             {/* Line Items Table with Live Auto-Calculations */}
             <div className="form-card">
               <div className="card-header-flex">
-                <h4 className="card-title">📦 Invoice Line Items</h4>
+                <h4 className="card-title"><Icon name="receipt" size={18} /> Invoice Line Items</h4>
                 <button type="button" className="add-item-btn" onClick={handleAddItem}>
                   + Add Item
                 </button>
@@ -940,7 +1035,7 @@ export default function InvoiceEditor({
 
             {/* Discount, Terms & Payment Details */}
             <div className="form-card">
-              <h4 className="card-title">⚙ Additional Settings &amp; Bank Details</h4>
+              <h4 className="card-title"><Icon name="settings" size={18} /> Additional Settings &amp; Bank Details</h4>
               <div className="form-row two-col">
                 <div className="form-field">
                   <label>Overall Discount (%)</label>
@@ -972,7 +1067,7 @@ export default function InvoiceEditor({
               }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
                   <label style={{ fontWeight: 700, fontSize: '0.85rem', color: '#1e293b', margin: 0 }}>
-                    📱 UPI Payment QR Code on Invoice
+                    <Icon name="qrCode" size={16} /> UPI Payment QR Code on Invoice
                   </label>
                   <span style={{ fontSize: '0.75rem', color: '#64748b' }}>Scan-to-Pay</span>
                 </div>
@@ -992,7 +1087,7 @@ export default function InvoiceEditor({
                       cursor: 'pointer'
                     }}
                   >
-                    ⚡ Auto-Generate QR (from UPI ID)
+                    <Icon name="qrCode" size={15} /> Auto-Generate QR (from UPI ID)
                   </button>
                   <label
                     htmlFor="editorUpiQrUpload"
@@ -1010,7 +1105,7 @@ export default function InvoiceEditor({
                       cursor: 'pointer'
                     }}
                   >
-                    <span>📷</span> Upload Custom UPI QR Code Image
+                    <Icon name="upload" size={15} /> Upload Custom UPI QR Code Image
                   </label>
                   <input
                     id="editorUpiQrUpload"
@@ -1029,7 +1124,7 @@ export default function InvoiceEditor({
                       style={{ width: '48px', height: '48px', objectFit: 'contain', borderRadius: '4px', border: '1px solid #e2e8f0' }}
                     />
                     <div style={{ flex: 1 }}>
-                      <span style={{ fontSize: '0.8rem', fontWeight: 600, color: '#15865a', display: 'block' }}>✓ Custom QR Uploaded</span>
+                      <span style={{ fontSize: '0.8rem', fontWeight: 600, color: '#15865a', display: 'flex', alignItems: 'center', gap: 4 }}><Icon name="checkCircle" size={14} /> Custom QR uploaded</span>
                       <small style={{ fontSize: '0.72rem', color: '#64748b' }}>This custom QR code will be printed on the invoice for payments</small>
                     </div>
                     <button
@@ -1049,9 +1144,7 @@ export default function InvoiceEditor({
                     </button>
                   </div>
                 ) : (
-                  <small style={{ display: 'block', fontSize: '0.75rem', color: '#64748b' }}>
-                    Currently using live generated QR code for <strong>{currentInvoice.paymentDetails?.upiId || currentInvoice.seller?.upiId || 'krishna@okhdfc'}</strong>. You can upload your GPay, PhonePe, or Paytm QR code image above.
-                  </small>
+                  <small style={{ display: 'block', fontSize: '0.75rem', color: '#64748b' }}>Enter a UPI ID to show its payment QR code, or upload a QR image above.</small>
                 )}
               </div>
 
@@ -1148,10 +1241,10 @@ export default function InvoiceEditor({
           <div className="preview-panel">
             <div className="preview-sticky-wrap">
               <div className="preview-label-bar">
-                <span>✦ Live Invoice Document Preview</span>
-                <span className="live-dot">● Real-time Sync</span>
+                <span><Icon name="sparkles" size={15} /> Live {documentTypeLabel} Preview</span>
+                <span className="live-dot"><Icon name="checkCircle" size={13} /> Real-time sync</span>
               </div>
-              <InvoicePreview invoice={currentInvoice} isLiveEditing={true} />
+              <InvoicePreview invoice={currentInvoice} isLiveEditing={true} isPro={isPro} onUpgrade={onUpgrade} />
             </div>
           </div>
         )}
@@ -1161,23 +1254,23 @@ export default function InvoiceEditor({
       <div className="mobile-editor-action-bar">
         <button
           className="meab-btn meab-back"
-          onClick={onBack}
+          onClick={() => onBack?.(currentInvoice)}
           title="Go back"
         >
-          ← Back
+          <Icon name="arrowLeft" size={15} /> Back
         </button>
         <div className="meab-view-switch">
           <button
             className={`meab-view-btn ${viewMode === 'edit' ? 'active' : ''}`}
             onClick={() => setViewMode('edit')}
           >
-            ✏️ Edit
+            <Icon name="edit" size={14} /> Edit
           </button>
           <button
             className={`meab-view-btn ${viewMode === 'preview' ? 'active' : ''}`}
             onClick={() => setViewMode('preview')}
           >
-            👁 Preview
+            <Icon name="fileText" size={14} /> Preview
           </button>
         </div>
         <button
@@ -1186,21 +1279,22 @@ export default function InvoiceEditor({
           title="Share on WhatsApp"
           style={{ background: '#25D366', color: '#fff', borderColor: '#25D366' }}
         >
-          💬 WA
+          <Icon name="message" size={15} /> WA
         </button>
         <button
           className="meab-btn meab-pdf"
-          onClick={onPrint}
+          onClick={() => onPrint?.(currentInvoice)}
           title="Download PDF"
         >
-          ⬇ PDF
+          <Icon name="download" size={15} /> PDF
         </button>
         <button
           className="meab-btn meab-save"
           onClick={handleSaveInvoice}
-          title="Save Invoice"
+          disabled={isSavingInvoice}
+          title={`Save ${documentTypeLabel}`}
         >
-          💾 Save
+          <Icon name="fileCheck" size={15} /> Save {documentTypeLabel}
         </button>
       </div>
     </div>

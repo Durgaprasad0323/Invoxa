@@ -14,7 +14,9 @@ const companySchema = new mongoose.Schema({
   bankName: { type: String, default: '' },
   accountNumber: { type: String, default: '' },
   ifsc: { type: String, default: '' },
+  branch: { type: String, default: '' },
   upiId: { type: String, default: '' },
+  upiQrUrl: { type: String, default: '' },
   createdAt: { type: Date, default: Date.now }
 }, {
   timestamps: true

@@ -1,10 +1,10 @@
 import React, { useState } from 'react'
+import Icon from '../ui/Icon'
 
 export default function WorkspaceSidebar({
   activeTab,
   setActiveTab,
   onBackToPublicSite,
-  onSubscribe,
   currentUser,
   businessProfile,
   invoicesCount = 0,
@@ -52,7 +52,7 @@ export default function WorkspaceSidebar({
             onClick={onCloseMobile}
             aria-label="Close Sidebar"
           >
-            ✕
+            <Icon name="x" size={19} />
           </button>
         )}
       </div>
@@ -66,7 +66,7 @@ export default function WorkspaceSidebar({
             onClick={() => setSalesOpen(!salesOpen)}
           >
             <div className="nav-item-left">
-              <span className="nav-icon">📄</span>
+              <span className="nav-icon"><Icon name="receipt" /></span>
               <span className="nav-label">Sales</span>
             </div>
             <span className="submenu-caret">{salesOpen ? '▾' : '▸'}</span>
@@ -115,7 +115,7 @@ export default function WorkspaceSidebar({
           onClick={() => handleNav('purchases')}
         >
           <div className="nav-item-left">
-            <span className="nav-icon">🛒</span>
+            <span className="nav-icon"><Icon name="shoppingCart" /></span>
             <span className="nav-label">Purchases</span>
           </div>
         </div>
@@ -126,7 +126,7 @@ export default function WorkspaceSidebar({
           onClick={() => handleNav('quotations')}
         >
           <div className="nav-item-left">
-            <span className="nav-icon">💬</span>
+            <span className="nav-icon"><Icon name="fileCheck" /></span>
             <span className="nav-label">Quotations+</span>
           </div>
           {quotesCount > 0 && <span className="item-counter quote-counter">{quotesCount}</span>}
@@ -138,7 +138,7 @@ export default function WorkspaceSidebar({
           onClick={() => handleNav('expenses')}
         >
           <div className="nav-item-left">
-            <span className="nav-icon">📉</span>
+            <span className="nav-icon"><Icon name="chartDown" /></span>
             <span className="nav-label">Expenses+</span>
           </div>
         </div>
@@ -149,7 +149,7 @@ export default function WorkspaceSidebar({
           onClick={() => handleNav('ai-generator')}
         >
           <div className="nav-item-left">
-            <span className="nav-icon ai-sparkle">✦</span>
+            <span className="nav-icon ai-sparkle"><Icon name="sparkles" /></span>
             <span className="nav-label">Invoxa AI</span>
           </div>
           <span className="badge-pill ai-pill">Fast</span>
@@ -161,7 +161,7 @@ export default function WorkspaceSidebar({
           onClick={() => handleNav('products')}
         >
           <div className="nav-item-left">
-            <span className="nav-icon">📦</span>
+            <span className="nav-icon"><Icon name="package" /></span>
             <span className="nav-label">Products & Services</span>
           </div>
           {productsCount > 0 && <span className="item-counter">{productsCount}</span>}
@@ -173,7 +173,7 @@ export default function WorkspaceSidebar({
           onClick={() => handleNav('inventory')}
         >
           <div className="nav-item-left">
-            <span className="nav-icon">📊</span>
+            <span className="nav-icon"><Icon name="boxes" /></span>
             <span className="nav-label">Inventory</span>
           </div>
         </div>
@@ -184,7 +184,7 @@ export default function WorkspaceSidebar({
           onClick={() => handleNav('payments')}
         >
           <div className="nav-item-left">
-            <span className="nav-icon">💳</span>
+            <span className="nav-icon"><Icon name="creditCard" /></span>
             <span className="nav-label">Payments</span>
           </div>
         </div>
@@ -195,7 +195,7 @@ export default function WorkspaceSidebar({
           onClick={() => handleNav('customers')}
         >
           <div className="nav-item-left">
-            <span className="nav-icon">👥</span>
+            <span className="nav-icon"><Icon name="users" /></span>
             <span className="nav-label">Customers</span>
           </div>
           {customersCount > 0 && <span className="item-counter">{customersCount}</span>}
@@ -207,18 +207,18 @@ export default function WorkspaceSidebar({
           onClick={() => handleNav('templates')}
         >
           <div className="nav-item-left">
-            <span className="nav-icon">▤</span>
+            <span className="nav-icon"><Icon name="layout" /></span>
             <span className="nav-label">Invoice Template &amp; Mixers</span>
           </div>
         </div>
 
         {/* Developer API & MCP */}
         <div
-          className={`nav-item ${activeTab === 'api' ? 'active' : ''}`}
+          className={`nav-item developer-api-nav-item ${activeTab === 'api' ? 'active' : ''}`}
           onClick={() => handleNav('api')}
         >
           <div className="nav-item-left">
-            <span className="nav-icon">⚡</span>
+            <span className="nav-icon"><Icon name="code" /></span>
             <span className="nav-label">Developer API</span>
           </div>
           <span className="badge-pill mcp-pill">MCP</span>
@@ -234,7 +234,7 @@ export default function WorkspaceSidebar({
             onClick={() => handleNav('invite-users')}
           >
             <div className="nav-item-left">
-              <span className="nav-icon">👤+</span>
+              <span className="nav-icon"><Icon name="userPlus" /></span>
               <span className="nav-label">Invite Users</span>
             </div>
           </div>
@@ -245,7 +245,7 @@ export default function WorkspaceSidebar({
             onClick={() => handleNav('settings')}
           >
             <div className="nav-item-left">
-              <span className="nav-icon">⚙️</span>
+              <span className="nav-icon"><Icon name="settings" /></span>
               <span className="nav-label">Settings</span>
             </div>
           </div>
@@ -256,7 +256,7 @@ export default function WorkspaceSidebar({
             onClick={() => handleNav('refer')}
           >
             <div className="nav-item-left">
-              <span className="nav-icon">🎁</span>
+              <span className="nav-icon"><Icon name="gift" /></span>
               <span className="nav-label">Refer a friend</span>
             </div>
           </div>
@@ -264,12 +264,12 @@ export default function WorkspaceSidebar({
 
         {/* Subscribe Promo Card */}
         <div className="subscribe-promo-card">
-          <p className="promo-text">Remove watermark from bills</p>
-          <button className="promo-subscribe-btn" onClick={onSubscribe}>Subscribe Now 🚀</button>
+          <p className="promo-text">Compare plans and unlock more tools</p>
+          <button className="promo-subscribe-btn" onClick={() => handleNav('subscriptions')}>View Plans</button>
         </div>
 
         <button className="back-website-btn" onClick={onBackToPublicSite} style={{ marginBottom: 6 }}>
-          <span>🌐</span> View Public Website
+          <Icon name="globe" size={16} /> View Public Website
         </button>
 
         <button
@@ -278,7 +278,7 @@ export default function WorkspaceSidebar({
           style={{ background: '#fee2e2', color: '#b91c1c', border: '1px solid #fecaca' }}
           title="Sign out of this account"
         >
-          <span>🚪</span> Sign Out
+          <Icon name="logOut" size={16} /> Sign Out
         </button>
       </div>
     </aside>

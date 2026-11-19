@@ -3,16 +3,21 @@ import path from 'path'
 import { fileURLToPath } from 'url'
 import bcrypt from 'bcryptjs'
 import mongoose from 'mongoose'
+import dotenv from 'dotenv'
 import { UserModel } from '../models/User.js'
 import { CompanyModel } from '../models/Company.js'
 import { InvoiceModel } from '../models/Invoice.js'
+import { CreditNoteModel } from '../models/CreditNote.js'
 import { CustomerModel } from '../models/Customer.js'
 import { ProductModel } from '../models/Product.js'
 import { ApiKeyModel } from '../models/ApiKey.js'
 
 const __filename = fileURLToPath(import.meta.url)
 const __dirname = path.dirname(__filename)
-const DB_FILE = path.join(__dirname, '../../data/database.json')
+dotenv.config()
+const DB_FILE = process.env.INVOXA_DATA_FILE
+  ? path.resolve(process.env.INVOXA_DATA_FILE)
+  : path.join(__dirname, '../../data/database.json')
 
 // Initial Seed Data
 export const getInitialData = () => {
@@ -57,7 +62,9 @@ export const getInitialData = () => {
         bankName: 'HDFC Bank Ltd',
         accountNumber: '50200012345678',
         ifsc: 'HDFC0000240',
-        upiId: 'krishna@okhdfc'
+        branch: 'BKC Branch, Mumbai',
+        upiId: 'krishna@okhdfc',
+        upiQrUrl: ''
       }
     ],
     invoices: [
@@ -126,6 +133,7 @@ export const getInitialData = () => {
         terms: 'Subject to Mumbai jurisdiction.'
       }
     ],
+    creditNotes: [],
     customers: [
       {
         id: 'cust_1',
@@ -193,6 +201,7 @@ class Database {
         const raw = fs.readFileSync(DB_FILE, 'utf-8')
         this.data = JSON.parse(raw)
         this.data.apiKeys ||= []
+        this.data.creditNotes ||= []
       } else {
         this.data = getInitialData()
         this.saveLocal()
@@ -205,9 +214,56 @@ class Database {
   saveLocal() {
     try {
       fs.writeFileSync(DB_FILE, JSON.stringify(this.data, null, 2))
+      return true
     } catch (err) {
       console.error('Failed to save to database file:', err)
+      return false
     }
+  }
+
+  async persistInvoice(invoice) {
+    if (this.isMongoConnected) {
+      await InvoiceModel.updateOne({ id: invoice.id }, { $set: invoice }, { upsert: true })
+      return 'database'
+    }
+
+    if (process.env.NODE_ENV === 'production' && !process.env.INVOXA_DATA_FILE) {
+      throw new Error('Production invoice storage is not configured. Connect MongoDB or set INVOXA_DATA_FILE to a persistent disk path.')
+    }
+
+    const previousInvoices = this.data.invoices
+    const existingIndex = previousInvoices.findIndex(item => item.id === invoice.id)
+    this.data.invoices = existingIndex >= 0
+      ? previousInvoices.map((item, index) => index === existingIndex ? invoice : item)
+      : [invoice, ...previousInvoices]
+
+    if (!this.saveLocal()) {
+      this.data.invoices = previousInvoices
+      throw new Error('Could not write the invoice to persistent storage.')
+    }
+
+    return 'file'
+  }
+
+  async persistCreditNote(creditNote) {
+    if (this.isMongoConnected) {
+      await CreditNoteModel.updateOne({ id: creditNote.id }, { $set: creditNote }, { upsert: true })
+      this.data.creditNotes = [creditNote, ...this.data.creditNotes.filter(item => item.id !== creditNote.id)]
+      this.saveLocal()
+      return 'database'
+    }
+
+    if (process.env.NODE_ENV === 'production' && !process.env.INVOXA_DATA_FILE) {
+      throw new Error('Production credit note storage is not configured. Connect MongoDB or set INVOXA_DATA_FILE to a persistent disk path.')
+    }
+
+    const previousCreditNotes = this.data.creditNotes
+    this.data.creditNotes = [creditNote, ...previousCreditNotes.filter(item => item.id !== creditNote.id)]
+    if (!this.saveLocal()) {
+      this.data.creditNotes = previousCreditNotes
+      throw new Error('Could not write the credit note to persistent storage.')
+    }
+    return 'file'
   }
 
   // Dual-persistence: updates local backup and MongoDB
@@ -225,6 +281,12 @@ class Database {
       } catch (err) {
         console.warn('MongoDB delete invoice warning:', err.message)
       }
+    }
+  }
+
+  async removeCreditNote(id) {
+    if (this.isMongoConnected) {
+      await CreditNoteModel.deleteOne({ id })
     }
   }
 
@@ -270,6 +332,12 @@ class Database {
           await InvoiceModel.updateOne({ id: inv.id }, { $set: inv }, { upsert: true })
         }
       }
+      // Upsert credit notes
+      if (this.data.creditNotes?.length) {
+        for (const creditNote of this.data.creditNotes) {
+          await CreditNoteModel.updateOne({ id: creditNote.id }, { $set: creditNote }, { upsert: true })
+        }
+      }
       // Upsert customers
       if (this.data.customers?.length) {
         for (const cust of this.data.customers) {
@@ -298,6 +366,7 @@ class Database {
       const users = await UserModel.find({}).lean()
       const companies = await CompanyModel.find({}).lean()
       const invoices = await InvoiceModel.find({}).lean()
+      const creditNotes = await CreditNoteModel.find({}).lean()
       const customers = await CustomerModel.find({}).lean()
       const products = await ProductModel.find({}).lean()
       const apiKeys = await ApiKeyModel.find({}).select('+keyHash').lean()
@@ -307,6 +376,7 @@ class Database {
           users,
           companies,
           invoices,
+          creditNotes,
           customers,
           products,
           apiKeys

@@ -12,8 +12,34 @@ const userSchema = new mongoose.Schema({
   companyId: { type: String },
   companyName: { type: String },
   plan: { type: String, enum: ['free', 'pro', 'enterprise'], default: 'free' },
+  billingCycle: { type: String, enum: ['monthly', 'yearly'], default: 'yearly' },
   status: { type: String, default: 'active' },
   subscriptionExpiry: { type: Date },
+  proTrialStartedAt: { type: Date },
+  proTrialEndsAt: { type: Date },
+  proTrialCreationsUsed: { type: Number, default: 0 },
+  proTrialUsage: [{
+    usageId: { type: String },
+    feature: { type: String },
+    usedAt: { type: Date, default: Date.now }
+  }],
+  subscriptionOrders: [{
+    orderId: { type: String },
+    plan: { type: String, enum: ['pro', 'enterprise'] },
+    billingCycle: { type: String, default: 'yearly' },
+    amount: { type: Number },
+    status: { type: String, default: 'created' },
+    paymentId: { type: String, default: '' },
+    createdAt: { type: Date, default: Date.now }
+  }],
+  subscriptionPayments: [{
+    paymentId: { type: String },
+    orderId: { type: String },
+    plan: { type: String, enum: ['pro', 'enterprise'] },
+    billingCycle: { type: String, enum: ['monthly', 'yearly'], default: 'yearly' },
+    amount: { type: Number },
+    paidAt: { type: Date, default: Date.now }
+  }],
   createdAt: { type: Date, default: Date.now }
 }, {
   timestamps: true
