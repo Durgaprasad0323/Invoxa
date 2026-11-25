@@ -5,6 +5,7 @@ import bcrypt from 'bcryptjs'
 import mongoose from 'mongoose'
 import dotenv from 'dotenv'
 import dns from 'dns'
+import { randomUUID } from 'crypto'
 
 try {
   dns.setServers(['8.8.8.8', '8.8.4.4', '1.1.1.1'])
@@ -26,6 +27,10 @@ const DB_FILE = process.env.INVOXA_DATA_FILE
 
 // Initial Seed Data
 export const getInitialData = () => {
+  if (process.env.NODE_ENV === 'production') {
+    return { users: [], companies: [], invoices: [], creditNotes: [], customers: [], products: [], apiKeys: [] }
+  }
+
   const hashedPassword = bcrypt.hashSync('admin123', 10)
   const userPassword = bcrypt.hashSync('password123', 10)
 
@@ -198,6 +203,11 @@ class Database {
 
   initLocal() {
     try {
+      if (process.env.NODE_ENV === 'production' && !process.env.INVOXA_DATA_FILE) {
+        this.data = getInitialData()
+        return
+      }
+
       const dir = path.dirname(DB_FILE)
       if (!fs.existsSync(dir)) {
         fs.mkdirSync(dir, { recursive: true })
@@ -433,7 +443,7 @@ export const connectDB = async () => {
   const mongoUri = process.env.MONGODB_URI || 'mongodb://127.0.0.1:27017/invoxa'
 
   try {
-    console.log(`⏳ Connecting to MongoDB at: ${mongoUri.replace(/:([^:@]{4})[^:@]*@/, ':****@')}`)
+    console.log('⏳ Connecting to MongoDB...')
     await mongoose.connect(mongoUri, {
       serverSelectionTimeoutMS: 10000
     })
@@ -447,5 +457,84 @@ export const connectDB = async () => {
     console.log('💡 Running with file-backed database (data/database.json).')
     console.log('👉 To use MongoDB Atlas, add your connection string to backend/.env:')
     console.log('   MONGODB_URI=mongodb+srv://<username>:<password>@cluster0.mongodb.net/invoxa?retryWrites=true&w=majority')
+  }
+}
+
+export const disableDefaultSeedAccounts = async () => {
+  if (process.env.NODE_ENV !== 'production') return
+
+  const knownDefaults = new Map([
+    ['admin@invoxa.com', 'admin123'],
+    ['krishna@enterprises.com', 'password123']
+  ])
+  let changed = false
+
+  for (const user of db.data.users || []) {
+    const defaultPassword = knownDefaults.get(user.email?.toLowerCase())
+    if (defaultPassword && typeof user.password === 'string' && bcrypt.compareSync(defaultPassword, user.password)) {
+      if (user.status !== 'disabled') {
+        user.status = 'disabled'
+        changed = true
+        console.warn(`Disabled seeded account with a public default password: ${user.email}`)
+      }
+    }
+  }
+
+  if (changed) {
+    db.saveLocal()
+    if (db.isMongoConnected) {
+      for (const user of db.data.users || []) {
+        if (user.status === 'disabled' && knownDefaults.has(user.email?.toLowerCase())) {
+          await UserModel.updateOne({ id: user.id }, { $set: { status: 'disabled' } })
+        }
+      }
+    }
+  }
+}
+
+export const provisionConfiguredSuperAdmin = async () => {
+  if (process.env.NODE_ENV !== 'production') return
+
+  const configuredEmail = process.env.SUPER_ADMIN_EMAIL?.trim().toLowerCase()
+  const configuredPassword = process.env.SUPER_ADMIN_PASSWORD
+  if (!configuredEmail && !configuredPassword) return
+  if (!configuredEmail || !configuredPassword || configuredPassword.length < 12 || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(configuredEmail)) {
+    throw new Error('Configure both SUPER_ADMIN_EMAIL and a SUPER_ADMIN_PASSWORD of at least 12 characters, or leave both unset.')
+  }
+
+  let admin = db.data.users.find(user => user.email?.toLowerCase() === configuredEmail)
+  if (admin && admin.role !== 'super_admin') {
+    throw new Error('SUPER_ADMIN_EMAIL already belongs to a non-admin account. Use a separate platform admin email.')
+  }
+
+  let changed = false
+  if (!admin) {
+    admin = {
+      id: `usr_super_admin_${randomUUID()}`,
+      name: 'Invoxa Platform Admin',
+      email: configuredEmail,
+      role: 'super_admin',
+      plan: 'enterprise',
+      createdAt: new Date().toISOString()
+    }
+    db.data.users.push(admin)
+    changed = true
+  }
+
+  if (admin.status !== 'active') {
+    admin.status = 'active'
+    changed = true
+  }
+  if (!admin.password || !bcrypt.compareSync(configuredPassword, admin.password)) {
+    admin.password = bcrypt.hashSync(configuredPassword, 10)
+    changed = true
+  }
+
+  if (changed) {
+    db.saveLocal()
+    if (db.isMongoConnected) {
+      await UserModel.updateOne({ id: admin.id }, { $set: admin }, { upsert: true })
+    }
+    console.log(`Configured platform admin account: ${configuredEmail}`)
   }
 }

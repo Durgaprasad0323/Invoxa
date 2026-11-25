@@ -1,4 +1,5 @@
 import { db } from '../config/db.js'
+import { randomUUID } from 'crypto'
 
 export const getProducts = (req, res) => {
   try {
@@ -24,7 +25,7 @@ export const createProduct = (req, res) => {
 
     const newProduct = {
       ...data,
-      id: data.id || `prod_${Date.now()}`,
+      id: `prod_${randomUUID()}`,
       companyId: req.user.companyId,
       price: parseFloat(data.price ?? data.rate ?? 0),
       buyPrice: parseFloat(data.buyPrice || 0),

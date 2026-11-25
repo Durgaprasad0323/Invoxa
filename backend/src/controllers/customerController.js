@@ -1,4 +1,5 @@
 import { db } from '../config/db.js'
+import { randomUUID } from 'crypto'
 
 export const getCustomers = (req, res) => {
   try {
@@ -24,7 +25,7 @@ export const createCustomer = (req, res) => {
 
     const newCustomer = {
       ...data,
-      id: data.id || `cust_${Date.now()}`,
+      id: `cust_${randomUUID()}`,
       companyId: req.user.companyId,
       createdAt: new Date().toISOString()
     }

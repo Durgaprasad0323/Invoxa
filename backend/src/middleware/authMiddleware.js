@@ -2,6 +2,7 @@ import jwt from 'jsonwebtoken'
 import { randomUUID } from 'crypto'
 import { db } from '../config/db.js'
 import { consumeProTrialCreation, getProTrialStatus, refundProTrialCreation } from '../services/proTrialService.js'
+import { getJwtSecret } from '../utils/security.js'
 
 export const verifyToken = (req, res, next) => {
   const authHeader = req.headers.authorization
@@ -11,10 +12,13 @@ export const verifyToken = (req, res, next) => {
 
   const token = authHeader.split(' ')[1]
   try {
-    const decoded = jwt.verify(token, process.env.JWT_SECRET || 'invoxa_jwt_secret_dev_key_2026_super_secure')
+    const decoded = jwt.verify(token, getJwtSecret())
     const user = db.data.users.find(u => u.id === decoded.id)
     if (!user) {
       return res.status(401).json({ error: 'Invalid user session.' })
+    }
+    if (user.status === 'disabled' || user.status === 'suspended') {
+      return res.status(403).json({ error: 'This account is disabled. Contact Invoxa support.' })
     }
     req.user = {
       id: user.id,

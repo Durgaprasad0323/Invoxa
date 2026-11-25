@@ -39,11 +39,6 @@ export const api = {
     body: JSON.stringify({ email, password })
   }),
 
-  register: (userData) => request('/auth/register', {
-    method: 'POST',
-    body: JSON.stringify(userData)
-  }),
-
   sendRegistrationOtp: (data) => request('/auth/register-send-otp', {
     method: 'POST',
     body: JSON.stringify(data)
@@ -62,11 +57,6 @@ export const api = {
   verifyOtp: (phone, otp) => request('/auth/verify-otp', {
     method: 'POST',
     body: JSON.stringify({ phone, otp })
-  }),
-
-  googleAuth: (googleData) => request('/auth/google', {
-    method: 'POST',
-    body: JSON.stringify(googleData)
   }),
 
   forgotPasswordSendOtp: (email) => request('/auth/forgot-password-send', {

@@ -4,7 +4,7 @@
  *   1. MSG91       (free trial, Indian OTP SMS — most reliable)
  *   2. Fast2SMS    (needs ₹100 recharge at fast2sms.com)
  *   3. Twilio      (free $15 trial at twilio.com)
- *   4. Simulator   (shows OTP in response as fallback)
+ *   4. No insecure simulator fallback
  */
 
 export const sendRealSMS = async (phone, otp) => {
@@ -26,8 +26,6 @@ export const sendRealSMS = async (phone, otp) => {
   // ─────────────────────────────────────────────────────────────
   if (msg91Key && msg91Key !== 'your_msg91_auth_key_here') {
     try {
-      console.log(`📡 [MSG91] Sending OTP ${otp} to +91 ${cleanPhone}...`)
-
       const payload = {
         template_id: msg91Template || '5fd29b4a4a110a0d7474f08c',
         mobile: `91${cleanPhone}`,
@@ -43,18 +41,16 @@ export const sendRealSMS = async (phone, otp) => {
       })
 
       const data = await response.json()
-      console.log('📡 [MSG91 Response]:', data)
 
       if (data.type === 'success') {
-        console.log(`✅ [MSG91] OTP delivered to +91 ${cleanPhone}!`)
         return { success: true, provider: 'MSG91', message: 'OTP delivered via MSG91!' }
       } else {
-        lastSmsError = data.message || JSON.stringify(data)
-        console.warn('⚠️ [MSG91] Failed:', lastSmsError)
+        lastSmsError = 'MSG91 delivery failed'
+        console.warn('MSG91 OTP delivery failed')
       }
     } catch (err) {
-      lastSmsError = err.message
-      console.error('❌ [MSG91] Request error:', err.message)
+      lastSmsError = 'MSG91 request failed'
+      console.error('MSG91 OTP request failed')
     }
   }
 
@@ -64,8 +60,6 @@ export const sendRealSMS = async (phone, otp) => {
   // ─────────────────────────────────────────────────────────────
   if (fast2smsKey && fast2smsKey !== 'your_fast2sms_api_key_here') {
     try {
-      console.log(`📡 [Fast2SMS] Sending OTP ${otp} to +91 ${cleanPhone}...`)
-
       const response = await fetch('https://www.fast2sms.com/dev/bulkV2', {
         method: 'POST',
         headers: {
@@ -81,17 +75,16 @@ export const sendRealSMS = async (phone, otp) => {
       })
 
       const data = await response.json()
-      console.log('📡 [Fast2SMS Response]:', data)
 
       if (data.return === true) {
         return { success: true, provider: 'Fast2SMS', message: 'OTP delivered via Fast2SMS!' }
       } else {
-        lastSmsError = Array.isArray(data.message) ? data.message.join(', ') : (data.message || 'Fast2SMS delivery blocked')
-        console.warn('⚠️ [Fast2SMS]:', lastSmsError)
+        lastSmsError = 'Fast2SMS delivery failed'
+        console.warn('Fast2SMS OTP delivery failed')
       }
     } catch (err) {
-      lastSmsError = err.message
-      console.error('❌ [Fast2SMS] Request error:', err.message)
+      lastSmsError = 'Fast2SMS request failed'
+      console.error('Fast2SMS OTP request failed')
     }
   }
 
@@ -102,7 +95,6 @@ export const sendRealSMS = async (phone, otp) => {
   // ─────────────────────────────────────────────────────────────
   if (twilioSid && twilioToken && twilioPhone) {
     try {
-      console.log(`📡 [Twilio] Sending OTP ${otp} to +91 ${cleanPhone}...`)
       const auth = Buffer.from(`${twilioSid}:${twilioToken}`).toString('base64')
 
       const params = new URLSearchParams()
@@ -124,22 +116,21 @@ export const sendRealSMS = async (phone, otp) => {
 
       const data = await response.json()
       if (response.ok) {
-        console.log('✅ [Twilio] SMS sent! SID:', data.sid)
         return { success: true, provider: 'Twilio', message: 'OTP delivered via Twilio!' }
       } else {
-        lastSmsError = data.message || 'Twilio delivery error'
-        console.warn('⚠️ [Twilio]:', lastSmsError)
+        lastSmsError = 'Twilio delivery failed'
+        console.warn('Twilio OTP delivery failed')
       }
     } catch (err) {
-      lastSmsError = err.message
-      console.error('❌ [Twilio] Request error:', err.message)
+      lastSmsError = 'Twilio request failed'
+      console.error('Twilio OTP request failed')
     }
   }
 
   // ─────────────────────────────────────────────────────────────
   // 4. FALLBACK — No working SMS gateway configured
   // ─────────────────────────────────────────────────────────────
-  console.log(`\n⚠️  [SMS GATEWAY] No working gateway for +91 ${cleanPhone}. Reason: ${lastSmsError || 'No gateway keys configured'}`)
+  console.warn(`SMS OTP delivery unavailable (${lastSmsError || 'no gateway configured'})`)
   return {
     success: false,
     provider: 'Fast2SMS',

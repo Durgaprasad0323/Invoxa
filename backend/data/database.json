@@ -200,6 +200,19 @@
       "role": "company_admin",
       "status": "active",
       "updatedAt": "2026-11-25T05:02:46.909Z"
+    },
+    {
+      "id": "usr_1795587050364",
+      "name": "krishna jaiswal",
+      "email": "dur.jai.rt24@dypatil.edu",
+      "phone": "",
+      "password": "$2a$10$Q/6eGxhmlGWB9nOBJ6OCAexA5Cgp3pZy1Fb0rVS8lg4BPJfhJOIA2",
+      "role": "company_admin",
+      "companyId": "comp_1795587050364",
+      "companyName": "1234567",
+      "plan": "free",
+      "emailVerified": true,
+      "createdAt": "2026-11-25T06:10:50.364Z"
     }
   ],
   "companies": [
@@ -402,6 +415,23 @@
       "state": "Maharashtra",
       "updatedAt": "2026-11-25T05:02:47.001Z",
       "upiId": ""
+    },
+    {
+      "id": "comp_1795587050364",
+      "ownerId": "usr_1795587050364",
+      "name": "1234567",
+      "phone": "",
+      "email": "dur.jai.rt24@dypatil.edu",
+      "address": "",
+      "city": "",
+      "state": "Maharashtra",
+      "pincode": "",
+      "bankName": "",
+      "accountNumber": "",
+      "ifsc": "",
+      "branch": "",
+      "upiId": "",
+      "upiQrUrl": ""
     }
   ],
   "invoices": [

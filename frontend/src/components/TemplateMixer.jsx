@@ -24,6 +24,7 @@ import {
   msgDefault
 } from '../utils/engineRenderer'
 import { addFreeInvoiceWatermark } from '../utils/invoiceWatermark'
+import { sanitizeInvoiceHtml } from '../utils/sanitizeInvoiceHtml'
 import { loadHtml2Pdf } from '../utils/pdfGenerator'
 import Icon from './ui/Icon'
 import '../templateEngine.css'
@@ -783,13 +784,13 @@ export default function TemplateMixer({
   const getLatestRenderedHtml = () => {
     const cuInvEl = document.getElementById('cuInv')
     if (cuInvEl && cuInvEl.innerHTML && cuInvEl.innerHTML.trim().length > 50) {
-      return cuInvEl.innerHTML
+      return sanitizeInvoiceHtml(cuInvEl.innerHTML)
     }
     if (customPreviewHtml && customPreviewHtml.trim().length > 50) {
-      return customPreviewHtml
+      return sanitizeInvoiceHtml(customPreviewHtml)
     }
     if (stageRef.current && stageRef.current.innerHTML && stageRef.current.innerHTML.trim().length > 50) {
-      return stageRef.current.innerHTML
+      return sanitizeInvoiceHtml(stageRef.current.innerHTML)
     }
     return render(currentStyle, renderOptions)
   }
@@ -800,7 +801,7 @@ export default function TemplateMixer({
     const element = document.createElement('div')
     element.className = 'inv'
     element.style.width = output === 'a4' ? '794px' : output === 'phone' ? '390px' : '300px'
-    element.innerHTML = getLatestRenderedHtml()
+    element.innerHTML = sanitizeInvoiceHtml(getLatestRenderedHtml())
     if (!isPro) addFreeInvoiceWatermark(element)
     document.body.appendChild(element)
 
@@ -999,12 +1000,12 @@ export default function TemplateMixer({
   ])
 
   // Generate Current Rendered HTML
-  const renderedHtml = customPreviewHtml || render(currentStyle, renderOptions)
+  const renderedHtml = sanitizeInvoiceHtml(customPreviewHtml || render(currentStyle, renderOptions))
 
   // Populate inline editor on entering Step 2 without triggering re-render focus loss
   useEffect(() => {
     if (modalStep === 2 && inlineEditRef.current && !isTypingInlineRef.current) {
-      inlineEditRef.current.innerHTML = customPreviewHtml || renderedHtml
+      inlineEditRef.current.innerHTML = sanitizeInvoiceHtml(customPreviewHtml || renderedHtml)
     }
     return () => {
       if (inlineEditRef.current) {
@@ -1845,7 +1846,7 @@ export default function TemplateMixer({
             <div
               ref={stageRef}
               className={`inv${!isPro ? ' invoice-has-watermark' : ''}`}
-              dangerouslySetInnerHTML={{ __html: renderedHtml }}
+              dangerouslySetInnerHTML={{ __html: sanitizeInvoiceHtml(renderedHtml) }}
             />
             {!isPro && (
               <div className="invoice-free-plan-watermark template-mixer-watermark">
@@ -2394,11 +2395,11 @@ export default function TemplateMixer({
                     onFocus={() => { isTypingInlineRef.current = true }}
                     onBlur={(e) => {
                       isTypingInlineRef.current = false
-                      latestInlineHtmlRef.current = e.currentTarget.innerHTML
-                      setCustomPreviewHtml(e.currentTarget.innerHTML)
+                      latestInlineHtmlRef.current = sanitizeInvoiceHtml(e.currentTarget.innerHTML)
+                      setCustomPreviewHtml(sanitizeInvoiceHtml(e.currentTarget.innerHTML))
                     }}
                     onInput={(e) => {
-                      latestInlineHtmlRef.current = e.currentTarget.innerHTML
+                      latestInlineHtmlRef.current = sanitizeInvoiceHtml(e.currentTarget.innerHTML)
                     }}
                   />
                   {!isPro && (

@@ -1,88 +1,17 @@
 import bcrypt from 'bcryptjs'
 import jwt from 'jsonwebtoken'
+import { randomInt } from 'crypto'
 import { db } from '../config/db.js'
 import { sendRealSMS } from '../services/smsService.js'
 import { sendEmailOTP, sendPasswordResetEmail } from '../services/emailService.js'
+import { getJwtSecret } from '../utils/security.js'
 
 const generateToken = (user) => {
   return jwt.sign(
     { id: user.id, email: user.email, role: user.role },
-    process.env.JWT_SECRET || 'invoxa_jwt_secret_dev_key_2026_super_secure',
-    { expiresIn: '30d' }
+    getJwtSecret(),
+    { expiresIn: '7d' }
   )
-}
-
-export const register = (req, res) => {
-  try {
-    const { name, email, password, companyName, phone, gstin } = req.body
-
-    if (!email || !password || !name) {
-      return res.status(400).json({ error: 'Name, email, and password are required.' })
-    }
-
-    const existingUser = db.data.users.find(u => u.email.toLowerCase() === email.toLowerCase())
-    if (existingUser) {
-      return res.status(400).json({ error: 'An account with this email already exists.' })
-    }
-
-    const hashedPassword = bcrypt.hashSync(password, 10)
-    const userId = `usr_${Date.now()}`
-    const companyId = `comp_${Date.now()}`
-
-    const newUser = {
-      id: userId,
-      name,
-      email: email.toLowerCase(),
-      password: hashedPassword,
-      role: 'company_admin',
-      companyId,
-      companyName: companyName || `${name}'s Business`,
-      plan: 'free',
-      createdAt: new Date().toISOString()
-    }
-
-    const newCompany = {
-      id: companyId,
-      ownerId: userId,
-      name: companyName || `${name}'s Business`,
-      gstin: gstin || '',
-      phone: phone || '',
-      email: email.toLowerCase(),
-      address: '',
-      city: '',
-      state: 'Maharashtra',
-      pincode: '',
-      bankName: '',
-      accountNumber: '',
-      ifsc: '',
-      branch: '',
-      upiId: '',
-      upiQrUrl: ''
-    }
-
-    db.data.users.push(newUser)
-    db.data.companies.push(newCompany)
-    db.save()
-
-    const token = generateToken(newUser)
-
-    return res.status(201).json({
-      message: 'Account created successfully!',
-      token,
-      user: {
-        id: newUser.id,
-        name: newUser.name,
-        email: newUser.email,
-        role: newUser.role,
-        companyName: newUser.companyName,
-        companyId: newUser.companyId,
-        plan: newUser.plan
-      }
-    })
-  } catch (err) {
-    console.error('Register error:', err)
-    return res.status(500).json({ error: 'Registration failed. Please try again.' })
-  }
 }
 
 export const login = (req, res) => {
@@ -101,6 +30,15 @@ export const login = (req, res) => {
     const isMatch = bcrypt.compareSync(password, user.password)
     if (!isMatch) {
       return res.status(401).json({ error: 'Invalid email or password.' })
+    }
+    if (user.status === 'disabled' || user.status === 'suspended') {
+      return res.status(403).json({ error: 'This account is disabled. Contact Invoxa support.' })
+    }
+    if (process.env.NODE_ENV === 'production' && (
+      (user.email?.toLowerCase() === 'admin@invoxa.com' && bcrypt.compareSync('admin123', user.password)) ||
+      (user.email?.toLowerCase() === 'krishna@enterprises.com' && bcrypt.compareSync('password123', user.password))
+    )) {
+      return res.status(403).json({ error: 'This seeded account still uses its public default password. Reset it before signing in.' })
     }
 
     const token = generateToken(user)
@@ -212,32 +150,36 @@ const otpStore = new Map()
 export const sendOtp = async (req, res) => {
   try {
     const { phone } = req.body
-    if (!phone || phone.length < 10) {
+    if (!phone) {
       return res.status(400).json({ error: 'Valid 10-digit phone number is required.' })
     }
 
     const cleanPhone = phone.replace(/[^0-9]/g, '').slice(-10)
-    // Generate 6-digit OTP
-    const generatedOtp = Math.floor(100000 + Math.random() * 900000).toString()
-    otpStore.set(cleanPhone, {
-      otp: generatedOtp,
-      expiresAt: Date.now() + 5 * 60 * 1000 // 5 minutes
-    })
+    if (!/^\d{10}$/.test(cleanPhone)) {
+      return res.status(400).json({ error: 'Valid 10-digit phone number is required.' })
+    }
 
-    console.log(`📱 [OTP SERVICE] Verification code for +91 ${cleanPhone}: ${generatedOtp}`)
+    const generatedOtp = String(randomInt(100000, 1000000))
 
     // Attempt real SMS / WhatsApp delivery via gateway
     const smsResult = await sendRealSMS(cleanPhone, generatedOtp)
 
+    if (!smsResult.success) {
+      otpStore.delete(cleanPhone)
+      return res.status(503).json({ error: 'SMS delivery is unavailable. Please try again later or sign in with email and password.' })
+    }
+
+    otpStore.set(cleanPhone, {
+      otp: generatedOtp,
+      attempts: 0,
+      expiresAt: Date.now() + 5 * 60 * 1000
+    })
+
     return res.json({
-      message: smsResult.success
-        ? `OTP sent to your phone (+91 ${cleanPhone}) via SMS!`
-        : `OTP generated for +91 ${cleanPhone}.`,
+      message: `OTP sent to your phone (+91 ${cleanPhone}) via SMS!`,
       phone: cleanPhone,
       smsDelivered: smsResult.success,
-      provider: smsResult.provider,
-      // If real SMS succeeded, we don't need to leak demoOtp; if no SMS key is added, we show demoOtp so testing works
-      demoOtp: smsResult.success ? undefined : generatedOtp
+      provider: smsResult.provider
     })
   } catch (err) {
     return res.status(500).json({ error: 'Failed to send OTP.' })
@@ -254,9 +196,18 @@ export const verifyOtp = (req, res) => {
     const cleanPhone = phone.replace(/[^0-9]/g, '').slice(-10)
     const stored = otpStore.get(cleanPhone)
 
-    const isValid = (stored && stored.otp === otp.trim()) || otp.trim() === '123456'
+    if (stored && stored.expiresAt <= Date.now()) {
+      otpStore.delete(cleanPhone)
+      return res.status(400).json({ error: 'Invalid or expired OTP. Please request a new code.' })
+    }
+
+    const isValid = Boolean(stored && stored.otp === otp.trim())
 
     if (!isValid) {
+      if (stored) {
+        stored.attempts += 1
+        if (stored.attempts >= 5) otpStore.delete(cleanPhone)
+      }
       return res.status(400).json({ error: 'Invalid or expired OTP. Please try again.' })
     }
 
@@ -305,6 +256,10 @@ export const verifyOtp = (req, res) => {
       db.save()
     }
 
+    if (user.status === 'disabled' || user.status === 'suspended') {
+      return res.status(403).json({ error: 'This account is disabled. Contact Invoxa support.' })
+    }
+
     const token = generateToken(user)
     const company = db.data.companies.find(c => c.ownerId === user.id || c.id === user.companyId) || null
 
@@ -330,78 +285,7 @@ export const verifyOtp = (req, res) => {
 }
 
 export const googleAuth = async (req, res) => {
-  try {
-    const { email, name, googleId, avatar } = req.body
-
-    if (!email) {
-      return res.status(400).json({ error: 'Google email is required.' })
-    }
-
-    const cleanEmail = email.toLowerCase().trim()
-    let user = db.data.users.find(u => u.email && u.email.toLowerCase() === cleanEmail)
-
-    if (!user) {
-      // First time Google user: create user & company in MongoDB
-      const userId = `usr_${Date.now()}`
-      const companyId = `comp_${Date.now()}`
-      user = {
-        id: userId,
-        name: name || cleanEmail.split('@')[0],
-        email: cleanEmail,
-        googleId: googleId || '',
-        avatar: avatar || '',
-        password: bcrypt.hashSync(`google_${Date.now()}`, 10),
-        role: 'company_admin',
-        companyId,
-        companyName: `${name || cleanEmail.split('@')[0]}'s Business`,
-        plan: 'free',
-        createdAt: new Date().toISOString()
-      }
-
-      const newCompany = {
-        id: companyId,
-        ownerId: userId,
-        name: user.companyName,
-        email: cleanEmail,
-        phone: '',
-        address: '',
-        city: '',
-        state: 'Maharashtra',
-        pincode: '',
-        bankName: '',
-        accountNumber: '',
-        ifsc: '',
-        branch: '',
-        upiId: '',
-        upiQrUrl: ''
-      }
-
-      db.data.users.push(user)
-      db.data.companies.push(newCompany)
-      db.save()
-    }
-
-    const token = generateToken(user)
-    const company = db.data.companies.find(c => c.ownerId === user.id || c.id === user.companyId) || null
-
-    return res.json({
-      message: 'Google login successful!',
-      token,
-      user: {
-        id: user.id,
-        name: user.name,
-        email: user.email,
-        role: user.role,
-        companyName: user.companyName,
-        companyId: user.companyId,
-        plan: user.plan
-      },
-      company
-    })
-  } catch (err) {
-    console.error('Google auth error:', err)
-    return res.status(500).json({ error: 'Google authentication failed.' })
-  }
+  return res.status(501).json({ error: 'Google sign-in is not configured. Use email and password until verified Google OAuth is connected.' })
 }
 
 // In-memory store for Email Signup: email -> { emailOtp, email, expiresAt }
@@ -422,10 +306,11 @@ export const sendRegistrationOtp = async (req, res) => {
       return res.status(400).json({ error: 'An account with this email already exists. Please sign in.' })
     }
 
-    const emailOtp = Math.floor(100000 + Math.random() * 900000).toString()
+    const emailOtp = String(randomInt(100000, 1000000))
 
     signupOtpStore.set(cleanEmail, {
       emailOtp,
+      attempts: 0,
       email: cleanEmail,
       expiresAt: Date.now() + 10 * 60 * 1000 // 10 minutes
     })
@@ -459,6 +344,9 @@ export const verifyRegistrationOtp = async (req, res) => {
     if (!emailOtp) {
       return res.status(400).json({ error: 'Email verification code is required.' })
     }
+    if (typeof password !== 'string' || password.length < 8) {
+      return res.status(400).json({ error: 'Password must be at least 8 characters long.' })
+    }
 
     const cleanEmail = email.toLowerCase().trim()
     const cleanPhone = phone ? phone.replace(/[^0-9]/g, '').slice(-10) : ''
@@ -475,6 +363,8 @@ export const verifyRegistrationOtp = async (req, res) => {
 
     // Strict verification: only the exact real email code matches
     if (record.emailOtp !== emailOtp.trim()) {
+      record.attempts += 1
+      if (record.attempts >= 5) signupOtpStore.delete(cleanEmail)
       return res.status(400).json({ error: 'Invalid Email verification code. Please check your inbox.' })
     }
 
@@ -568,9 +458,10 @@ export const forgotPasswordSendOtp = async (req, res) => {
       return res.status(404).json({ error: 'No account found with this email address.' })
     }
 
-    const resetOtp = Math.floor(100000 + Math.random() * 900000).toString()
+    const resetOtp = String(randomInt(100000, 1000000))
     passwordResetStore.set(cleanEmail, {
       resetOtp,
+      attempts: 0,
       expiresAt: Date.now() + 10 * 60 * 1000 // 10 minutes
     })
 
@@ -596,8 +487,8 @@ export const forgotPasswordReset = async (req, res) => {
     if (!email || !resetOtp || !newPassword) {
       return res.status(400).json({ error: 'Email, reset code, and new password are required.' })
     }
-    if (newPassword.length < 6) {
-      return res.status(400).json({ error: 'New password must be at least 6 characters long.' })
+    if (newPassword.length < 8) {
+      return res.status(400).json({ error: 'New password must be at least 8 characters long.' })
     }
 
     const cleanEmail = email.toLowerCase().trim()
@@ -612,6 +503,8 @@ export const forgotPasswordReset = async (req, res) => {
     }
 
     if (record.resetOtp !== resetOtp.trim()) {
+      record.attempts += 1
+      if (record.attempts >= 5) passwordResetStore.delete(cleanEmail)
       return res.status(400).json({ error: 'Invalid verification code. Please check your email inbox.' })
     }
 
@@ -622,6 +515,7 @@ export const forgotPasswordReset = async (req, res) => {
     }
 
     user.password = bcrypt.hashSync(newPassword, 10)
+    user.status = 'active'
     db.save()
     passwordResetStore.delete(cleanEmail)
 

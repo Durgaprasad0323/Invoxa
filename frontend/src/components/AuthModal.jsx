@@ -133,8 +133,8 @@ export default function AuthModal({ isOpen, onClose, onLoginSuccess, initialMode
       setErrorMsg('Please enter a valid business email address.')
       return
     }
-    if (!password || password.length < 6) {
-      setErrorMsg('Password must be at least 6 characters long.')
+    if (!password || password.length < 8) {
+      setErrorMsg('Password must be at least 8 characters long.')
       return
     }
 
@@ -219,8 +219,8 @@ export default function AuthModal({ isOpen, onClose, onLoginSuccess, initialMode
       setErrorMsg('Please enter the 6-digit verification code.')
       return
     }
-    if (!forgotNewPassword || forgotNewPassword.length < 6) {
-      setErrorMsg('New password must be at least 6 characters long.')
+    if (!forgotNewPassword || forgotNewPassword.length < 8) {
+      setErrorMsg('New password must be at least 8 characters long.')
       return
     }
 
@@ -236,47 +236,6 @@ export default function AuthModal({ isOpen, onClose, onLoginSuccess, initialMode
       onClose()
     } catch (err) {
       setErrorMsg(err.message || 'Password reset failed. Please check the code.')
-    } finally {
-      setIsSubmitting(false)
-    }
-  }
-
-  // ─────────────────────────────────────────────────────────────
-  // GOOGLE LOGIN
-  // ─────────────────────────────────────────────────────────────
-  const handleGoogleLogin = async () => {
-    setErrorMsg('')
-    setIsSubmitting(true)
-
-    if (window.google?.accounts?.id && window.GOOGLE_CLIENT_ID) {
-      window.google.accounts.id.prompt()
-      setIsSubmitting(false)
-      return
-    }
-
-    const googleEmail = window.prompt('Sign in with Google\n\nEnter your Google Account email address (e.g. yourname@gmail.com):')
-    if (!googleEmail || !googleEmail.includes('@')) {
-      setIsSubmitting(false)
-      if (googleEmail !== null) {
-        setErrorMsg('Please enter a valid Google email address.')
-      }
-      return
-    }
-
-    const defaultName = googleEmail.split('@')[0].replace(/[._-]/g, ' ')
-    const googleName = window.prompt('Enter your Full Name (as on your Google account):', defaultName.charAt(0).toUpperCase() + defaultName.slice(1)) || defaultName
-
-    try {
-      const data = await api.googleAuth({
-        email: googleEmail.trim(),
-        name: googleName.trim(),
-        googleId: `google_${Date.now()}`
-      })
-      localStorage.setItem('invoxa_token', data.token)
-      onLoginSuccess(data.user)
-      onClose()
-    } catch (err) {
-      setErrorMsg(err.message || 'Google login failed. Please try again.')
     } finally {
       setIsSubmitting(false)
     }
@@ -402,7 +361,7 @@ export default function AuthModal({ isOpen, onClose, onLoginSuccess, initialMode
               <input
                 type="password"
                 required
-                placeholder="At least 6 characters"
+                placeholder="At least 8 characters"
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
               />
@@ -682,7 +641,7 @@ export default function AuthModal({ isOpen, onClose, onLoginSuccess, initialMode
                   <input
                     type="password"
                     required
-                    placeholder="At least 6 characters"
+                    placeholder="At least 8 characters"
                     value={forgotNewPassword}
                     onChange={(e) => setForgotNewPassword(e.target.value)}
                   />
@@ -711,52 +670,6 @@ export default function AuthModal({ isOpen, onClose, onLoginSuccess, initialMode
               </form>
             )}
           </div>
-        )}
-
-        {/* OR DIVIDER & GOOGLE SIGN-IN (Only on signin/signup) */}
-        {mode !== 'forgot' && (
-          <>
-            <div style={{ display: 'flex', alignItems: 'center', margin: '18px 0 14px', gap: 10 }}>
-              <div style={{ flex: 1, height: 1, background: '#e2e8f0' }} />
-              <span style={{ fontSize: '0.75rem', color: '#94a3b8', textTransform: 'uppercase', fontWeight: 700, letterSpacing: '0.5px' }}>
-                Or continue with
-              </span>
-              <div style={{ flex: 1, height: 1, background: '#e2e8f0' }} />
-            </div>
-
-            <button
-              type="button"
-              onClick={handleGoogleLogin}
-              disabled={isSubmitting}
-              style={{
-                width: '100%',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                gap: 10,
-                background: '#ffffff',
-                color: '#1e293b',
-                border: '1.5px solid #cbd5e1',
-                borderRadius: 8,
-                padding: '10px 16px',
-                fontSize: '0.92rem',
-                fontWeight: 600,
-                cursor: 'pointer',
-                boxShadow: '0 1px 3px rgba(0,0,0,0.06)',
-                transition: 'all 0.2s'
-              }}
-              onMouseEnter={(e) => { e.currentTarget.style.borderColor = '#94a3b8'; e.currentTarget.style.background = '#f8fafc'; }}
-              onMouseLeave={(e) => { e.currentTarget.style.borderColor = '#cbd5e1'; e.currentTarget.style.background = '#ffffff'; }}
-            >
-              <svg width="18" height="18" viewBox="0 0 18 18">
-                <path fill="#4285F4" d="M17.64 9.2c0-.63-.06-1.25-.16-1.84H9v3.49h4.84a4.14 4.14 0 0 1-1.8 2.71v2.26h2.92c1.71-1.57 2.68-3.89 2.68-6.62z"/>
-                <path fill="#34A853" d="M9 18c2.43 0 4.47-.8 5.96-2.18l-2.92-2.26c-.8.54-1.83.86-3.04.86-2.34 0-4.33-1.58-5.04-3.71H.96v2.33C2.44 15.98 5.48 18 9 18z"/>
-                <path fill="#FBBC05" d="M3.96 10.71A5.4 5.4 0 0 1 3.68 9c0-.59.1-1.17.28-1.71V4.96H.96A8.99 8.99 0 0 0 0 9c0 1.45.35 2.82.96 4.04l3-2.33z"/>
-                <path fill="#EA4335" d="M9 3.58c1.32 0 2.51.45 3.44 1.35l2.58-2.59C13.46.89 11.43 0 9 0 5.48 0 2.44 2.02.96 4.96l3 2.33c.71-2.13 2.7-3.71 5.04-3.71z"/>
-              </svg>
-              <span>Continue with Google</span>
-            </button>
-          </>
         )}
 
         <div style={{ textAlign: 'center', marginTop: 16, fontSize: '0.85rem', color: '#64748b' }}>

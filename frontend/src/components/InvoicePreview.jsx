@@ -4,6 +4,7 @@ import { invoxaInvoiceToEngineTemplate, render, renderA4, LAYOUTS } from '../uti
 import { calculateInvoiceTotals, formatINR } from '../utils/calculations'
 import { numberToIndianWords } from '../utils/numberToWords'
 import { loadHtml2Pdf } from '../utils/pdfGenerator'
+import { sanitizeInvoiceHtml } from '../utils/sanitizeInvoiceHtml'
 import Icon from './ui/Icon'
 import '../templateEngine.css'
 
@@ -279,7 +280,7 @@ export default function InvoicePreview({ invoice, previewRef, isPrintOnly = fals
               contentEditable={isDirectEditable}
               suppressContentEditableWarning={true}
               style={{ width: '100%', outline: isDirectEditable ? '1.5px dashed #86efac' : 'none', borderRadius: 6 }}
-              dangerouslySetInnerHTML={{ __html: renderA4(engineTemplate, { l: 'classic', out: 'a4', paper: paperTexture, stamp: stampActive, status: invoice.status?.toLowerCase() === 'paid' ? 'paid' : 'sent', seal: true, msg: invoice.reviewQrUrl ? 'review' : 'none', reviewQrImg: invoice.reviewQrUrl || null }) }}
+              dangerouslySetInnerHTML={{ __html: sanitizeInvoiceHtml(renderA4(engineTemplate, { l: 'classic', out: 'a4', paper: paperTexture, stamp: stampActive, status: invoice.status?.toLowerCase() === 'paid' ? 'paid' : 'sent', seal: true, msg: invoice.reviewQrUrl ? 'review' : 'none', reviewQrImg: invoice.reviewQrUrl || null })) }}
             />
             {freePlanWatermark}
           </div>
@@ -299,7 +300,7 @@ export default function InvoicePreview({ invoice, previewRef, isPrintOnly = fals
             position: 'relative'
           }}
         >
-          <div dangerouslySetInnerHTML={{ __html: renderEngineHtml() }} />
+          <div dangerouslySetInnerHTML={{ __html: sanitizeInvoiceHtml(renderEngineHtml()) }} />
           {freePlanWatermark}
         </div>
       ) : (

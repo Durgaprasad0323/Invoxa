@@ -1,4 +1,5 @@
 import { db } from '../config/db.js'
+import { randomUUID } from 'crypto'
 
 const roundMoney = amount => Math.round((Number(amount || 0) + Number.EPSILON) * 100) / 100
 const customerKey = customer => String(customer?.name || '').trim().replace(/\s+/g, ' ').toLowerCase()
@@ -94,7 +95,7 @@ export const createInvoice = async (req, res) => {
 
     const newInvoice = {
       ...data,
-      id: data.id || `inv_${Date.now()}`,
+      id: `inv_${randomUUID()}`,
       companyId: req.user.companyId,
       userId: req.user.id,
       invoiceNumber: data.invoiceNumber || nextNum,

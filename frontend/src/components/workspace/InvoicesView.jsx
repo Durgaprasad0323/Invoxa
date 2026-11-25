@@ -3,6 +3,7 @@ import { calculateInvoiceTotals, formatINR } from '../../utils/calculations'
 import { invoxaInvoiceToEngineTemplate, renderA4 } from '../../utils/engineRenderer'
 import { addFreeInvoiceWatermark } from '../../utils/invoiceWatermark'
 import { loadHtml2Pdf } from '../../utils/pdfGenerator'
+import { sanitizeInvoiceHtml } from '../../utils/sanitizeInvoiceHtml'
 import Icon from '../ui/Icon'
 import '../../templateEngine.css'
 
@@ -30,17 +31,17 @@ export default function InvoicesView({
     element.style.backgroundColor = '#ffffff'
 
     if (inv.renderedHtml) {
-      element.innerHTML = inv.renderedHtml
+      element.innerHTML = sanitizeInvoiceHtml(inv.renderedHtml)
     } else {
       const engineTemplate = invoxaInvoiceToEngineTemplate(inv)
-      element.innerHTML = renderA4(engineTemplate, {
+      element.innerHTML = sanitizeInvoiceHtml(renderA4(engineTemplate, {
         l: inv.layout || 'band',
         out: 'a4',
         paper: inv.paperTexture || 'white',
         stamp: inv.stampActive || 'brand',
         status: inv.status?.toLowerCase() === 'paid' ? 'paid' : 'sent',
         seal: true
-      })
+      }))
     }
 
     if (!isPro) addFreeInvoiceWatermark(element)
