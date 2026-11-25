@@ -23,6 +23,7 @@ export default function WorkspaceHeader({
       case 'api': return 'Developer  API Keys & Claude MCP'
       case 'settings': return 'Configuration  Business Settings'
       case 'pos': return 'POS Terminal  80mm Thermal Receipt'
+      case 'ewaybills': return 'Sales  E-Way Bills'
       default: return 'Sales'
     }
   }
@@ -44,6 +45,7 @@ export default function WorkspaceHeader({
            activeTab === 'templates' ? 'Templates' :
            activeTab === 'pos' ? 'POS Billing' :
            activeTab === 'payments' ? 'Payments' :
+           activeTab === 'ewaybills' ? 'E-Way Bills' :
            activeTab === 'ai-generator' ? 'AI Invoice' : 'Invoxa'}
         </span>
       </div>

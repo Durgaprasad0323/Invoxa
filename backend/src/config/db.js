@@ -250,6 +250,33 @@ class Database {
     return 'file'
   }
 
+  async persistApiKey(apiKey) {
+    const { _id, __v, ...storedKey } = apiKey
+    if (this.isMongoConnected) {
+      await ApiKeyModel.updateOne(
+        { id: storedKey.id },
+        { $set: storedKey },
+        { upsert: true, runValidators: true }
+      )
+      this.data.apiKeys ||= []
+      this.data.apiKeys = [storedKey, ...this.data.apiKeys.filter(key => key.id !== storedKey.id)]
+      this.saveLocal()
+      return 'database'
+    }
+
+    if (process.env.NODE_ENV === 'production' && !process.env.INVOXA_DATA_FILE) {
+      throw new Error('Production API key storage is not configured. Connect MongoDB or set INVOXA_DATA_FILE to a persistent disk path.')
+    }
+
+    const previousApiKeys = this.data.apiKeys || []
+    this.data.apiKeys = [storedKey, ...previousApiKeys.filter(key => key.id !== storedKey.id)]
+    if (!this.saveLocal()) {
+      this.data.apiKeys = previousApiKeys
+      throw new Error('Could not write the API key to persistent storage.')
+    }
+    return 'file'
+  }
+
   async persistCreditNote(creditNote) {
     if (this.isMongoConnected) {
       await CreditNoteModel.updateOne({ id: creditNote.id }, { $set: creditNote }, { upsert: true })

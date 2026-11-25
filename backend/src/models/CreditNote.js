@@ -27,6 +27,7 @@ const creditNoteSchema = new mongoose.Schema({
   adjustmentTaxRate: { type: Number, default: 0 },
   notes: { type: String, default: '' },
   terms: { type: String, default: '' },
+  settlementMethod: { type: String, enum: ['account-credit', 'refund'], default: 'account-credit' },
   subtotal: { type: Number, default: 0 },
   taxAmount: { type: Number, default: 0 },
   total: { type: Number, default: 0 },

@@ -1,5 +1,56 @@
 import { db } from '../config/db.js'
 
+const roundMoney = amount => Math.round((Number(amount || 0) + Number.EPSILON) * 100) / 100
+const customerKey = customer => String(customer?.name || '').trim().replace(/\s+/g, ' ').toLowerCase()
+
+const validateCustomerCreditApplications = (data, user, replacingInvoiceId = '') => {
+  const appliedAmount = roundMoney(data.customerCreditApplied)
+  const applications = Array.isArray(data.customerCreditApplications) ? data.customerCreditApplications : []
+  if (appliedAmount <= 0 && !applications.length) return null
+  if (appliedAmount <= 0 || !applications.length) return 'Choose the customer credit to apply again before saving this invoice.'
+
+  const identity = customerKey(data.client)
+  if (!identity) return 'Add the customer name before applying customer credit.'
+
+  const eligibleNotes = (db.data.creditNotes || []).filter(note => (
+    note.companyId === user.companyId &&
+    note.settlementMethod === 'account-credit' &&
+    (note.status || 'Issued') !== 'Voided' &&
+    customerKey(note.customer) === identity
+  ))
+  const usedByNote = new Map()
+  db.data.invoices
+    .filter(invoice => invoice.id !== replacingInvoiceId && invoice.companyId === user.companyId)
+    .flatMap(invoice => invoice.customerCreditApplications || [])
+    .forEach(application => {
+      const id = String(application.creditNoteId || '')
+      usedByNote.set(id, roundMoney((usedByNote.get(id) || 0) + Number(application.amount || 0)))
+    })
+
+  const availableById = new Map(eligibleNotes.map(note => [String(note.id), Math.max(0, roundMoney(Number(note.total) - (usedByNote.get(String(note.id)) || 0)))]))
+  const seen = new Set()
+  let total = 0
+  for (const application of applications) {
+    const id = String(application.creditNoteId || '')
+    const amount = roundMoney(application.amount)
+    if (!id || seen.has(id) || !Number.isFinite(amount) || amount <= 0) {
+      return 'The customer credit allocation is invalid. Review the credit amount and try again.'
+    }
+    seen.add(id)
+    const available = availableById.get(id)
+    if (available === undefined) return 'One of the selected credits is no longer available for this customer.'
+    if (amount > available + 0.01) return 'One of the selected customer credits has already been used on another invoice.'
+    total = roundMoney(total + amount)
+  }
+  if (Math.abs(total - appliedAmount) > 0.01) return 'The customer credit total does not match its allocations.'
+
+  const subtotal = (data.items || []).reduce((sum, item) => sum + (Number(item.quantity) || 0) * (Number(item.rate) || 0), 0)
+  const tax = (data.items || []).reduce((sum, item) => sum + (Number(item.quantity) || 0) * (Number(item.rate) || 0) * (Number(item.taxRate) || 0) / 100, 0)
+  const invoiceTotal = Math.round(Math.max(0, subtotal - subtotal * (Number(data.discountRate) || 0) / 100) + tax)
+  if (appliedAmount > invoiceTotal + 0.01) return 'Customer credit cannot exceed the invoice total.'
+  return null
+}
+
 export const getInvoices = (req, res) => {
   try {
     const isSuper = req.user.role === 'super_admin'
@@ -36,6 +87,8 @@ export const getInvoiceById = (req, res) => {
 export const createInvoice = async (req, res) => {
   try {
     const data = req.body
+    const creditError = validateCustomerCreditApplications(data, req.user)
+    if (creditError) return res.status(400).json({ error: creditError })
     const companyInvoices = db.data.invoices.filter(i => i.companyId === req.user.companyId)
     const nextNum = `INV-2026-${String(companyInvoices.length + 1).padStart(3, '0')}`
 
@@ -77,6 +130,9 @@ export const updateInvoice = async (req, res) => {
     if (req.user.role !== 'super_admin' && existing.companyId !== req.user.companyId && existing.userId !== req.user.id) {
       return res.status(403).json({ error: 'Unauthorized to update this invoice.' })
     }
+
+    const creditError = validateCustomerCreditApplications(req.body, req.user, id)
+    if (creditError) return res.status(400).json({ error: creditError })
 
     const updated = {
       ...existing,

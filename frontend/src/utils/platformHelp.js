@@ -191,7 +191,8 @@ const guides = [
     steps: [
       'Open Credit Notes from the Sales section in the workspace sidebar.',
       'Choose the invoice and enter the returned items or adjustment amount.',
-      'Save the credit note and review it in the Credit Notes list.'
+      'Choose whether to keep the amount as customer credit or refund the customer separately. Invoxa does not transfer refund money.',
+      'Save the credit note. For customer credit, create the same customer’s next invoice and apply the available credit before saving.'
     ],
     tab: 'credit-notes'
   },

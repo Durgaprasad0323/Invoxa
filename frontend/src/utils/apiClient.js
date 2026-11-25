@@ -119,6 +119,10 @@ export const api = {
   revokeDeveloperKey: (id) => request(`/developer/keys/${id}`, {
     method: 'DELETE'
   }),
+  verifyDeveloperKey: (secret) => request('/v1/status', {
+    method: 'GET',
+    headers: { Authorization: `Bearer ${secret}` }
+  }),
   createApiSampleInvoice: (secret) => request('/v1/invoices', {
     method: 'POST',
     headers: { Authorization: `Bearer ${secret}` },

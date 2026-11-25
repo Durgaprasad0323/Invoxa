@@ -40,6 +40,7 @@ export const createCreditNote = async (req, res) => {
 
     const adjustmentAmount = Number(body.adjustmentAmount) || 0
     const adjustmentTaxRate = Number(body.adjustmentTaxRate) || 0
+    const settlementMethod = body.settlementMethod === 'refund' ? 'refund' : 'account-credit'
     if (adjustmentAmount < 0 || adjustmentTaxRate < 0) {
       return res.status(400).json({ error: 'Adjustment amount and tax rate cannot be negative.' })
     }
@@ -116,6 +117,7 @@ export const createCreditNote = async (req, res) => {
       adjustmentTaxRate,
       notes: String(body.notes || '').trim(),
       terms: String(body.terms || '').trim(),
+      settlementMethod,
       subtotal,
       taxAmount,
       total,
@@ -136,6 +138,8 @@ export const deleteCreditNote = async (req, res) => {
     const existing = db.data.creditNotes.find(note => note.id === req.params.id)
     if (!existing) return res.status(404).json({ error: 'Credit note not found.' })
     if (!belongsToCompany(existing, req.user)) return res.status(403).json({ error: 'You are not allowed to delete this credit note.' })
+    const isApplied = db.data.invoices.some(invoice => (invoice.customerCreditApplications || []).some(application => application.creditNoteId === existing.id))
+    if (isApplied) return res.status(409).json({ error: 'This customer credit has already been applied to an invoice and cannot be deleted.' })
 
     const previousNotes = db.data.creditNotes
     db.data.creditNotes = previousNotes.filter(note => note.id !== existing.id)

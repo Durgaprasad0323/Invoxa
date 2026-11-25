@@ -25,12 +25,12 @@ export const PLAN_CATALOG = [
     summary: 'More invoice designs and advanced business modules.',
     popular: true,
     features: [
-      'Everything in Free+',
+      'Everything in Free',
       '15+ customizable invoice templates: 18 styles, 19 industry designs, and 10 layouts',
       'Purchases and expenses workspaces with records saved in this browser',
       'POS billing workspace (session-only)',
       'Inventory workspace linked to the product catalog',
-      'Credit notes and E-Invoice JSON drafts',
+      'Credit notes, E-Invoice JSON drafts, and E-Way Bill records',
       'Remove the Invoxa watermark from bills',
       'WhatsApp support link'
     ],
@@ -51,11 +51,11 @@ export const PLAN_CATALOG = [
     price: 3499,
     monthlyPrice: 499,
     yearlyPrice: 3499,
-    summary: 'Pro tools plus programmatic invoice access.',
+    summary: 'Everything currently available in Invoxa, plus expanded developer API access.',
     features: [
-      'Everything in Pro',
-      'Expanded Developer API access with Live and Sandbox keys',
-      'Up to 10 named active API keys',
+      'Everything in Free and Pro, including all currently available workspaces and customization tools',
+      'Live and Sandbox access for the invoice creation API',
+      'Up to 10 active named API keys',
       '60 API requests per minute per key'
     ],
     plannedFeatures: [
@@ -78,6 +78,7 @@ export const TAB_PLAN_REQUIREMENTS = {
   pos: 'pro',
   'credit-notes': 'pro',
   einvoices: 'pro',
+  ewaybills: 'pro',
   purchases: 'pro',
   expenses: 'pro',
   inventory: 'pro',

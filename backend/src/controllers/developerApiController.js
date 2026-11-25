@@ -1,5 +1,6 @@
 import { createHash, randomBytes, randomUUID } from 'crypto'
 import { db } from '../config/db.js'
+import { ApiKeyModel } from '../models/ApiKey.js'
 import { getEffectivePlan } from '../middleware/authMiddleware.js'
 
 const MAX_ACTIVE_API_KEYS = 10
@@ -16,17 +17,21 @@ const toPublicKey = (key) => ({
   revokedAt: key.revokedAt || null
 })
 
-export const listApiKeys = (req, res) => {
-  const keys = (db.data.apiKeys || [])
-    .filter(key => key.userId === req.user.id)
-    .sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt))
-    .map(toPublicKey)
-
-  const maxActiveKeys = getEffectivePlan(req.user) === 'enterprise' ? MAX_ACTIVE_API_KEYS : 1
-  return res.json({ keys, maxActiveKeys })
+export const listApiKeys = async (req, res) => {
+  try {
+    const savedKeys = db.isMongoConnected
+      ? await ApiKeyModel.find({ userId: req.user.id }).sort({ createdAt: -1 }).lean()
+      : (db.data.apiKeys || []).filter(key => key.userId === req.user.id)
+    const keys = savedKeys.map(toPublicKey)
+    const maxActiveKeys = getEffectivePlan(req.user) === 'enterprise' ? MAX_ACTIVE_API_KEYS : 1
+    return res.json({ keys, maxActiveKeys })
+  } catch (error) {
+    console.error('Developer API key list error:', error)
+    return res.status(503).json({ error: 'API keys could not be loaded from account storage.' })
+  }
 }
 
-export const createApiKey = (req, res) => {
+export const createApiKey = async (req, res) => {
   if (req.user.role === 'super_admin') {
     return res.status(403).json({ error: 'API keys can only be created for a business account.' })
   }
@@ -75,7 +80,15 @@ export const createApiKey = (req, res) => {
     return res.status(400).json({ error: 'Describe what the integration will do in 10 to 500 characters.' })
   }
 
-  const activeKeys = (db.data.apiKeys || []).filter(key => key.userId === req.user.id && !key.revokedAt)
+  let activeKeys
+  try {
+    activeKeys = db.isMongoConnected
+      ? await ApiKeyModel.find({ userId: req.user.id, revokedAt: null }).lean()
+      : (db.data.apiKeys || []).filter(key => key.userId === req.user.id && !key.revokedAt)
+  } catch (error) {
+    console.error('Developer API key storage lookup error:', error)
+    return res.status(503).json({ error: 'API key storage is temporarily unavailable. No key was created.' })
+  }
   if (activeKeys.some(key => key.name.trim().toLowerCase() === name.toLowerCase() && (key.environment || 'live') === environment)) {
     return res.status(409).json({ error: `An active ${environment} key already uses this name. Choose a different name for each integration.` })
   }
@@ -110,9 +123,12 @@ export const createApiKey = (req, res) => {
     revokedAt: null
   }
 
-  db.data.apiKeys ||= []
-  db.data.apiKeys.push(record)
-  db.save()
+  try {
+    await db.persistApiKey(record)
+  } catch (error) {
+    console.error('Developer API key persistence error:', error)
+    return res.status(503).json({ error: 'The API key could not be saved, so it was not activated. Check account storage and try again.' })
+  }
 
   return res.status(201).json({
     message: 'API key created. Copy it now; it will not be shown again.',
@@ -121,15 +137,28 @@ export const createApiKey = (req, res) => {
   })
 }
 
-export const revokeApiKey = (req, res) => {
-  const key = (db.data.apiKeys || []).find(item => item.id === req.params.id && item.userId === req.user.id)
+export const revokeApiKey = async (req, res) => {
+  let key
+  try {
+    key = db.isMongoConnected
+      ? await ApiKeyModel.findOne({ id: req.params.id, userId: req.user.id }).select('+keyHash').lean()
+      : (db.data.apiKeys || []).find(item => item.id === req.params.id && item.userId === req.user.id)
+  } catch (error) {
+    console.error('Developer API key lookup error:', error)
+    return res.status(503).json({ error: 'API key storage is temporarily unavailable. Please try again.' })
+  }
   if (!key) {
     return res.status(404).json({ error: 'API key not found.' })
   }
 
   if (!key.revokedAt) {
     key.revokedAt = new Date().toISOString()
-    db.save()
+    try {
+      await db.persistApiKey(key)
+    } catch (error) {
+      console.error('Developer API key revocation error:', error)
+      return res.status(503).json({ error: 'The key could not be revoked in persistent storage. Please try again.' })
+    }
   }
 
   return res.json({ message: 'API key revoked.', key: toPublicKey(key) })

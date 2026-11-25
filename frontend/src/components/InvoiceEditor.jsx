@@ -1,7 +1,8 @@
 import React, { useState, useEffect, useRef } from 'react'
 import InvoicePreview from './InvoicePreview'
 import { calculateInvoiceTotals, formatINR } from '../utils/calculations'
-import { STAMPS, SIGS } from '../utils/engineRenderer'
+import { getAvailableCustomerCredits, sumAvailableCustomerCredits } from '../utils/customerCredits'
+import { STAMPS, SIGS, INVOICE_THEME_PALETTES } from '../utils/engineRenderer'
 import Icon from './ui/Icon'
 
 export default function InvoiceEditor({
@@ -11,7 +12,9 @@ export default function InvoiceEditor({
   onBack,
   onPrint,
   originTab,
-  onUpgrade
+  onUpgrade,
+  invoices = [],
+  creditNotes = []
 }) {
   // Direct responsive invoice state for instant, lag-free typing
   const safeClone = (inv) => {
@@ -123,11 +126,39 @@ export default function InvoiceEditor({
           ...updated[section],
           [field]: value
         }
+        if (section === 'client' && ['name', 'email', 'phone'].includes(field)) {
+          updated.customerCreditApplied = 0
+          updated.customerCreditApplications = []
+        }
+        if (section === 'client' && field === 'state') {
+          updated.isInterState = undefined
+        }
       } else {
         updated[field] = value
         if (documentType !== 'invoice' && field === 'invoiceNumber') updated.quoteNumber = value
         if (documentType !== 'invoice' && field === 'invoiceDate') updated.quoteDate = value
       }
+      recordHistory(updated)
+      return updated
+    })
+  }
+
+  const handleThemeChange = (theme) => {
+    setCurrentInvoice((prev) => {
+      const updated = {
+        ...prev,
+        theme,
+        themeColor: INVOICE_THEME_PALETTES[theme]?.acc || prev.themeColor,
+        renderedHtml: null
+      }
+      recordHistory(updated)
+      return updated
+    })
+  }
+
+  const handlePreviewLayoutChange = (layout) => {
+    setCurrentInvoice((prev) => {
+      const updated = { ...prev, layout, renderedHtml: null }
       recordHistory(updated)
       return updated
     })
@@ -395,18 +426,20 @@ export default function InvoiceEditor({
 
   const handleWhatsAppShare = () => {
     const { grandTotal } = calculateInvoiceTotals(currentInvoice)
+    const amountDue = Math.max(0, grandTotal - (Number(currentInvoice.customerCreditApplied) || 0))
     const clientName = currentInvoice.client?.name || 'Valued Customer'
     const sellerName = currentInvoice.seller?.name || 'Invoxa'
     const documentNumber = currentInvoice.invoiceNumber || currentInvoice.quoteNumber || 'DOC-001'
     const upiId = currentInvoice.paymentDetails?.upiId || currentInvoice.seller?.upiId || ''
     const paymentMessage = documentType === 'invoice' && upiId
-      ? `Pay via UPI: upi://pay?pa=${encodeURIComponent(upiId)}&pn=${encodeURIComponent(sellerName)}&am=${grandTotal.toFixed(2)}&cu=INR\nUPI ID: ${upiId}\n\n`
+      ? `Pay via UPI: upi://pay?pa=${encodeURIComponent(upiId)}&pn=${encodeURIComponent(sellerName)}&am=${amountDue.toFixed(2)}&cu=INR\nUPI ID: ${upiId}\n\n`
       : ''
 
     const message = `Hello ${clientName},\n\n` +
       `Here are the ${documentTypeLabel.toLowerCase()} details from ${sellerName}:\n` +
       `${documentTypeLabel} No: ${documentNumber}\n` +
       `Total Amount: ${formatINR(grandTotal)}\n` +
+      (documentType === 'invoice' && amountDue < grandTotal ? `Customer credit applied: ${formatINR(grandTotal - amountDue)}\nBalance due: ${formatINR(amountDue)}\n` : '') +
       `${documentType === 'invoice' ? 'Due Date' : 'Valid Until'}: ${documentType === 'invoice' ? currentInvoice.dueDate || 'Immediate' : currentInvoice.validUntil || currentInvoice.dueDate || 'Not set'}\n\n` +
       paymentMessage +
       `Thank you for your business!`
@@ -420,6 +453,25 @@ export default function InvoiceEditor({
   }
 
   const totals = calculateInvoiceTotals(currentInvoice)
+  const availableCredits = documentType === 'invoice'
+    ? getAvailableCustomerCredits(creditNotes, invoices, currentInvoice.client, currentInvoice.id)
+    : []
+  const availableCreditAmount = sumAvailableCustomerCredits(availableCredits)
+  const creditApplied = Math.min(
+    Math.max(0, Number(currentInvoice.customerCreditApplied) || 0),
+    availableCreditAmount,
+    totals.grandTotal
+  )
+  const balanceDue = Math.max(0, totals.grandTotal - creditApplied)
+
+  const applyCustomerCredit = value => {
+    const amount = Math.max(0, Math.min(Number(value) || 0, availableCreditAmount, totals.grandTotal))
+    setCurrentInvoice(previous => {
+      const updated = { ...previous, customerCreditApplied: amount, customerCreditApplications: [], renderedHtml: null }
+      recordHistory(updated)
+      return updated
+    })
+  }
 
   return (
     <div className="editor-wrapper">
@@ -603,7 +655,7 @@ export default function InvoiceEditor({
                   <label>Design Template Theme</label>
                   <select
                     value={currentInvoice.theme || 'emerald'}
-                    onChange={(e) => handleFieldChange(null, 'theme', e.target.value)}
+                    onChange={(e) => handleThemeChange(e.target.value)}
                   >
                     <option value="emerald">Invoxa Emerald (Modern)</option>
                     <option value="navy">Corporate Navy Blue</option>
@@ -902,12 +954,20 @@ export default function InvoiceEditor({
                   />
                 </div>
                 <div className="form-field">
-                  <label>State (determines CGST/SGST vs IGST)</label>
+                  <label>Place of supply / customer state</label>
                   <input
                     type="text"
                     value={currentInvoice.client?.state || ''}
                     onChange={(e) => handleFieldChange('client', 'state', e.target.value)}
                   />
+                  <label className="interstate-tax-toggle">
+                    <input
+                      type="checkbox"
+                      checked={totals.isInterState}
+                      onChange={event => handleFieldChange(null, 'isInterState', event.target.checked)}
+                    />
+                    <span>Customer is in another state (charge IGST instead of CGST + SGST)</span>
+                  </label>
                 </div>
               </div>
 
@@ -929,6 +989,28 @@ export default function InvoiceEditor({
                   />
                 </div>
               </div>
+              {documentType === 'invoice' && (availableCreditAmount > 0 || Number(currentInvoice.customerCreditApplied) > 0) && (
+                <div className="form-row customer-credit-row">
+                  <div className="form-field">
+                    <label>Available customer credit</label>
+                    <div className="customer-credit-control">
+                      <input
+                        type="number"
+                        min="0"
+                        max={Math.min(availableCreditAmount, totals.grandTotal)}
+                        step="0.01"
+                        value={Number(currentInvoice.customerCreditApplied) || 0}
+                        onChange={event => applyCustomerCredit(event.target.value)}
+                        aria-label="Customer credit to apply"
+                      />
+                      <button type="button" className="secondary-btn" onClick={() => applyCustomerCredit(Math.min(availableCreditAmount, totals.grandTotal))}>
+                        Apply available credit
+                      </button>
+                    </div>
+                    <small>{formatINR(availableCreditAmount)} is available for {currentInvoice.client?.name || 'this customer'}.</small>
+                  </div>
+                </div>
+              )}
             </div>
 
             {/* Line Items Table with Live Auto-Calculations */}
@@ -1030,6 +1112,8 @@ export default function InvoiceEditor({
                   <span>Grand Total:</span>
                   <strong>{formatINR(totals.grandTotal)}</strong>
                 </div>
+                {creditApplied > 0 && <div className="live-totals-row customer-credit-total"><span>Customer credit applied:</span><strong>- {formatINR(creditApplied)}</strong></div>}
+                {creditApplied > 0 && <div className="live-totals-row grand"><span>Balance due:</span><strong>{formatINR(balanceDue)}</strong></div>}
               </div>
             </div>
 
@@ -1244,7 +1328,13 @@ export default function InvoiceEditor({
                 <span><Icon name="sparkles" size={15} /> Live {documentTypeLabel} Preview</span>
                 <span className="live-dot"><Icon name="checkCircle" size={13} /> Real-time sync</span>
               </div>
-              <InvoicePreview invoice={currentInvoice} isLiveEditing={true} isPro={isPro} onUpgrade={onUpgrade} />
+              <InvoicePreview
+                invoice={currentInvoice}
+                isLiveEditing={true}
+                isPro={isPro}
+                onUpgrade={onUpgrade}
+                onLayoutChange={handlePreviewLayoutChange}
+              />
             </div>
           </div>
         )}

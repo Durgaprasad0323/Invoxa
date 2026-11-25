@@ -23,7 +23,9 @@ export function calculateInvoiceTotals(invoice) {
 
   const sellerState = (invoice.seller?.state || 'Maharashtra').trim().toLowerCase()
   const clientState = (invoice.client?.state || 'Maharashtra').trim().toLowerCase()
-  const isInterState = sellerState !== clientState && clientState !== ''
+  const isInterState = typeof invoice.isInterState === 'boolean'
+    ? invoice.isInterState
+    : sellerState !== clientState && clientState !== ''
 
   items.forEach(item => {
     const qty = parseFloat(item.quantity) || 0

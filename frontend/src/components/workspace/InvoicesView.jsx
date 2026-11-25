@@ -72,12 +72,14 @@ export default function InvoicesView({
   const totals = invoices.reduce(
     (acc, inv) => {
       const { grandTotal } = calculateInvoiceTotals(inv)
+      const creditApplied = Math.min(grandTotal, Math.max(0, Number(inv.customerCreditApplied) || 0))
+      const balanceDue = Math.max(0, grandTotal - creditApplied)
       acc.totalSales += grandTotal
       if (inv.status === 'Paid') {
-        acc.paidAmount += grandTotal
+        acc.paidAmount += balanceDue
         acc.paidCount += 1
       } else {
-        acc.unpaidAmount += grandTotal
+        acc.unpaidAmount += balanceDue
         acc.unpaidCount += 1
       }
       return acc
@@ -103,12 +105,13 @@ export default function InvoicesView({
 
   const handleWhatsAppShare = (inv) => {
     const { grandTotal } = calculateInvoiceTotals(inv)
+    const balanceDue = Math.max(0, grandTotal - (Number(inv.customerCreditApplied) || 0))
     const clientName = inv.client?.name || 'Customer'
     const sellerName = inv.seller?.name || 'Krishna Enterprises'
     const invoiceNo = inv.invoiceNumber
     const upiId = inv.paymentDetails?.upiId || inv.seller?.upiId || ''
 
-    const message = `Dear ${clientName},\n\nHere is your Tax Invoice ${invoiceNo} for ${formatINR(grandTotal)} from ${sellerName}.\n\nDue Date: ${inv.dueDate}\nStatus: ${inv.status.toUpperCase()}\n\n${upiId ? `Pay instantly via UPI: ${upiId}\n\n` : ''}Thank you for your business!`
+    const message = `Dear ${clientName},\n\nHere is your Tax Invoice ${invoiceNo} for ${formatINR(grandTotal)} from ${sellerName}.${balanceDue < grandTotal ? `\nCustomer credit applied: ${formatINR(grandTotal - balanceDue)}\nBalance due: ${formatINR(balanceDue)}` : ''}\n\nDue Date: ${inv.dueDate}\nStatus: ${inv.status.toUpperCase()}\n\n${upiId ? `Pay instantly via UPI: ${upiId} · Amount: ${formatINR(balanceDue)}\n\n` : ''}Thank you for your business!`
     const url = `https://wa.me/?text=${encodeURIComponent(message)}`
     window.open(url, '_blank')
   }
@@ -189,6 +192,8 @@ export default function InvoicesView({
           <div className="mobile-invoice-cards">
             {filteredInvoices.map((inv) => {
               const { grandTotal, totalTax, isInterState } = calculateInvoiceTotals(inv)
+              const creditApplied = Math.min(grandTotal, Math.max(0, Number(inv.customerCreditApplied) || 0))
+              const balanceDue = Math.max(0, grandTotal - creditApplied)
               const isPaid = inv.status === 'Paid'
 
               return (
@@ -217,6 +222,7 @@ export default function InvoicesView({
                     <div className="mic-amount-col">
                       <span className="mic-total">{formatINR(grandTotal)}</span>
                       <small className="mic-tax">Tax: {formatINR(totalTax)}</small>
+                      {creditApplied > 0 && <small className="mic-tax">Credit applied: -{formatINR(creditApplied)} · Due: {formatINR(balanceDue)}</small>}
                     </div>
                   </div>
 
@@ -248,18 +254,20 @@ export default function InvoicesView({
                       onClick={() => onEditInvoice(inv)}
                       title="Edit in Template Mixer"
                     >
-                       Edit
+                      <Icon name="edit" size={15} /> Edit
                     </button>
                     <button
+                      type="button"
                       className="mic-btn mic-delete"
                       onClick={() => {
                         if (window.confirm(`Delete invoice ${inv.invoiceNumber}?`)) {
                           onDeleteInvoice(inv.id)
                         }
                       }}
-                      title="Delete"
+                      title="Delete invoice"
+                      aria-label={`Delete invoice ${inv.invoiceNumber}`}
                     >
-                      
+                      <Icon name="trash" size={16} />
                     </button>
                   </div>
                 </div>
@@ -284,6 +292,8 @@ export default function InvoicesView({
               <tbody>
                 {filteredInvoices.map((inv) => {
                   const { grandTotal, totalTax, isInterState } = calculateInvoiceTotals(inv)
+                  const creditApplied = Math.min(grandTotal, Math.max(0, Number(inv.customerCreditApplied) || 0))
+                  const balanceDue = Math.max(0, grandTotal - creditApplied)
                   const isPaid = inv.status === 'Paid'
 
                   return (
@@ -310,6 +320,7 @@ export default function InvoicesView({
                         <div className="amount-cell">
                           <strong>{formatINR(grandTotal)}</strong>
                           <small>Tax: {formatINR(totalTax)}</small>
+                          {creditApplied > 0 && <small>Credit: -{formatINR(creditApplied)} · Due: {formatINR(balanceDue)}</small>}
                         </div>
                       </td>
                       <td>

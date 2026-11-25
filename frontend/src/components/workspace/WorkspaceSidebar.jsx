@@ -62,7 +62,7 @@ export default function WorkspaceSidebar({
         {/* Sales Group (Expandable) */}
         <div className="nav-group">
           <div
-            className={`nav-item has-submenu ${['invoices', 'pos', 'credit-notes', 'einvoices', 'subscriptions'].includes(activeTab) ? 'active' : ''}`}
+            className={`nav-item has-submenu ${['invoices', 'pos', 'credit-notes', 'einvoices', 'ewaybills', 'subscriptions'].includes(activeTab) ? 'active' : ''}`}
             onClick={() => setSalesOpen(!salesOpen)}
           >
             <div className="nav-item-left">
@@ -98,6 +98,12 @@ export default function WorkspaceSidebar({
                 onClick={() => handleNav('einvoices')}
               >
                 <span>E-Invoices</span>
+              </div>
+              <div
+                className={`submenu-item ${activeTab === 'ewaybills' ? 'active' : ''}`}
+                onClick={() => handleNav('ewaybills')}
+              >
+                <span>E-Way Bills</span>
               </div>
               <div
                 className={`submenu-item ${activeTab === 'subscriptions' ? 'active' : ''}`}

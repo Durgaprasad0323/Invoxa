@@ -14,6 +14,7 @@ import SettingsView from './SettingsView'
 import PosBillingView from './PosBillingView'
 import CreditNotesView from './CreditNotesView'
 import EInvoicesView from './EInvoicesView'
+import EWayBillsView from './EWayBillsView'
 import SubscriptionsView from './SubscriptionsView'
 import PurchasesView from './PurchasesView'
 import ExpensesView from './ExpensesView'
@@ -22,6 +23,14 @@ import InviteUsersView from './InviteUsersView'
 import ReferView from './ReferView'
 import InvoiceGenerator from '../InvoiceGenerator'
 import { getEffectivePlan, hasActiveProTrial, hasPlanAccess, TAB_PLAN_REQUIREMENTS } from '../../utils/plans'
+import { calculateInvoiceTotals, formatINR } from '../../utils/calculations'
+import { allocateCustomerCredits, getAvailableCustomerCredits, sumAvailableCustomerCredits } from '../../utils/customerCredits'
+
+const invoxaWhatsAppNumber = String(import.meta.env.VITE_INVOXA_WHATSAPP_NUMBER || '').replace(/\D/g, '')
+const invoxaWhatsAppMessage = encodeURIComponent('Hello Invoxa, I need help with the platform.')
+const invoxaWhatsAppUrl = invoxaWhatsAppNumber
+  ? `https://wa.me/${invoxaWhatsAppNumber}?text=${invoxaWhatsAppMessage}`
+  : `https://wa.me/?text=${invoxaWhatsAppMessage}`
 
 const normalizeProduct = product => ({
   ...product,
@@ -43,6 +52,8 @@ export default function AppWorkspace({
   setQuotations,
   customers,
   setCustomers,
+  creditNotes,
+  setCreditNotes,
   products,
   setProducts,
   businessProfile,
@@ -65,6 +76,7 @@ export default function AppWorkspace({
     pos: 'Build a point-of-sale bill by selecting products, quantities, and a payment method.',
     'credit-notes': 'Review how credit notes record customer returns, refunds, and invoice adjustments.',
     einvoices: 'Check invoice details and preview the JSON data prepared for GST e-invoice registration.',
+    ewaybills: 'Review sales invoices and record E-Way Bill numbers and transport details issued through the GST portal.',
     purchases: 'Review purchase records, supplier bills, payment status, and GST amounts.',
     expenses: 'Explore how business expenses can be categorized and tracked.',
     inventory: 'Review stock quantities and the inventory controls available to your business.'
@@ -204,6 +216,18 @@ export default function AppWorkspace({
     setTimeout(() => setToastMessage(''), 3500)
   }
 
+  const handleSaveEWayBill = async (invoiceId, eWayBill) => {
+    const invoice = invoices.find(item => item.id === invoiceId)
+    if (!invoice) throw new Error('The linked invoice could not be found.')
+    const updatedInvoice = { ...invoice, eWayBill }
+    if (localStorage.getItem('invoxa_token')) {
+      const response = await api.updateInvoice(invoiceId, { eWayBill })
+      if (response.invoice) Object.assign(updatedInvoice, response.invoice)
+    }
+    setInvoices(previous => previous.map(item => item.id === invoiceId ? updatedInvoice : item))
+    showToast(`E-Way Bill ${eWayBill.number} saved with invoice ${invoice.invoiceNumber}.`)
+  }
+
   // 1-Click "Convert Quote to Invoice"
   const handleConvertQuoteToInvoice = async (quote) => {
     const nextInvoiceNum = `INV-2026-${String(invoices.length + 1).padStart(3, '0')}`
@@ -217,6 +241,15 @@ export default function AppWorkspace({
       status: 'Unpaid',
       docType: 'invoice'
     }
+    const credits = getAvailableCustomerCredits(creditNotes, invoices, convertedInvoice.client)
+    const availableCredit = sumAvailableCustomerCredits(credits)
+    const maxCredit = Math.min(availableCredit, calculateInvoiceTotals(convertedInvoice).grandTotal)
+    const applyCredit = maxCredit > 0 && window.confirm(
+      `${quote.client?.name || 'This customer'} has ${formatINR(availableCredit)} in available customer credit. Apply up to ${formatINR(maxCredit)} to this invoice?`
+    )
+    const applications = allocateCustomerCredits(credits, applyCredit ? maxCredit : 0)
+    convertedInvoice.customerCreditApplications = applications
+    convertedInvoice.customerCreditApplied = applications.reduce((sum, application) => sum + application.amount, 0)
 
     try {
       if (localStorage.getItem('invoxa_token')) {
@@ -381,6 +414,18 @@ export default function AppWorkspace({
     const token = localStorage.getItem('invoxa_token')
     const isExisting = invoices.some(invoice => invoice.id === newInvoice.id)
     const invoiceDocument = { ...newInvoice, docType: 'invoice' }
+    if (!isExisting && !Number(invoiceDocument.customerCreditApplied)) {
+      const credits = getAvailableCustomerCredits(creditNotes, invoices, invoiceDocument.client)
+      const availableCredit = sumAvailableCustomerCredits(credits)
+      const maxCredit = Math.min(availableCredit, calculateInvoiceTotals(invoiceDocument).grandTotal)
+      if (maxCredit > 0 && window.confirm(
+        `${invoiceDocument.client?.name || 'This customer'} has ${formatINR(availableCredit)} in available customer credit. Apply up to ${formatINR(maxCredit)} to this invoice?`
+      )) {
+        const applications = allocateCustomerCredits(credits, maxCredit)
+        invoiceDocument.customerCreditApplications = applications
+        invoiceDocument.customerCreditApplied = applications.reduce((sum, application) => sum + application.amount, 0)
+      }
+    }
     let invoiceToStore = invoiceDocument
     if (token) {
       try {
@@ -532,6 +577,7 @@ export default function AppWorkspace({
               customers={customers}
               products={products}
               businessProfile={businessProfile}
+              onCreditNotesChange={setCreditNotes}
               searchQuery={searchQuery}
               onTrialUsageUpdated={refreshProTrial}
             />
@@ -545,6 +591,16 @@ export default function AppWorkspace({
               searchQuery={searchQuery}
               onNewInvoice={() => onNewInvoice()}
               onEditInvoice={handleEditInvoiceInMixer}
+              onConsumeTrialCreation={consumeTrialCreation}
+            />
+          )}
+
+          {activeTab === 'ewaybills' && (
+            <EWayBillsView
+              invoices={invoices}
+              searchQuery={searchQuery}
+              onNewInvoice={() => onNewInvoice()}
+              onSaveEWayBill={handleSaveEWayBill}
               onConsumeTrialCreation={consumeTrialCreation}
             />
           )}
@@ -709,13 +765,14 @@ export default function AppWorkspace({
 
       {/* Floating WhatsApp Action Button */}
       <a
-        href="https://wa.me/?text=Hello%20Invoxa%2C%20I%20have%20a%20question%20about%20billing."
+        href={invoxaWhatsAppUrl}
         target="_blank"
         rel="noopener noreferrer"
         className="swipe-floating-wa"
         title="Chat on WhatsApp"
+        aria-label="Chat with Invoxa on WhatsApp"
       >
-        <span className="wa-icon"><Icon name="message" size={22} /></span>
+        <span className="wa-icon"><Icon name="whatsapp" size={25} strokeWidth={1.7} /></span>
       </a>
 
       {/* Mobile Bottom Navigation Bar */}

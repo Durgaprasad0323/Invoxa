@@ -430,12 +430,11 @@ export const sendRegistrationOtp = async (req, res) => {
       expiresAt: Date.now() + 10 * 60 * 1000 // 10 minutes
     })
 
-    console.log(`🔐 [SIGNUP EMAIL OTP] For ${cleanEmail}: Code = ${emailOtp}`)
-
     // Dispatch real email verification code
     const emailRes = await sendEmailOTP(cleanEmail, emailOtp, name || 'Business Owner')
 
     if (!emailRes.success) {
+      signupOtpStore.delete(cleanEmail)
       return res.status(500).json({ error: emailRes.error || 'Failed to dispatch email verification code.' })
     }
 
@@ -575,10 +574,9 @@ export const forgotPasswordSendOtp = async (req, res) => {
       expiresAt: Date.now() + 10 * 60 * 1000 // 10 minutes
     })
 
-    console.log(`🔑 [PASSWORD RESET OTP] For ${cleanEmail}: Reset Code = ${resetOtp}`)
-
     const emailRes = await sendPasswordResetEmail(cleanEmail, resetOtp, user.name)
     if (!emailRes.success) {
+      passwordResetStore.delete(cleanEmail)
       return res.status(500).json({ error: emailRes.error || 'Failed to dispatch reset code to email.' })
     }
 

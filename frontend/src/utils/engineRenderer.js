@@ -3,6 +3,11 @@
  * Complete port of the 10-Layout, 64-Palette, 36-Font Pair, 10-Language Template Library
  */
 
+import React from "react";
+import { renderToStaticMarkup } from "react-dom/server";
+import { QRCodeSVG } from "qrcode.react";
+
+
 export const STYLES = [
   { id: "studio", name: "Teal Studio", cat: "Creative", ind: "Interiors", biz: "Sharma Interiors", logo: "SI", city: "Pune, Maharashtra", gstin: "27AABCS1429R1Z5", pos: "Maharashtra (27)", fd: "Fraunces", fb: "Manrope", ink: "#13211F", acc: "#0E5E5A", acc2: "#3FA79B", soft: "#E6F2F0", art: "waves",
     client: "Mehta Homes", ccity: "Baner, Pune, Maharashtra", cg: "27AAFCM7731K1Z2", gst: 18, intra: true, po: "WO-2026-118", adv: 30000,
@@ -223,6 +228,36 @@ export const LAYOUTS = [
   ["minimal", "Minimal"], ["hero", "Hero total"], ["split", "Split"],
   ["receipt", "Receipt"], ["editorial", "Editorial"], ["cards", "Cards"], ["frame", "Frame"]
 ];
+
+export const INVOICE_THEME_PALETTES = {
+  emerald: { acc: "#15865a", acc2: "#3FA79B", soft: "#E6F2F0" },
+  navy: { acc: "#1e3a8a", acc2: "#3b82f6", soft: "#eff6ff" },
+  charcoal: { acc: "#1f2937", acc2: "#6b7280", soft: "#f3f4f6" }
+};
+
+function renderQrSvg(value, dark = "#14161C", size = 128) {
+  if (!value) return "";
+  return renderToStaticMarkup(React.createElement(QRCodeSVG, {
+    value,
+    size,
+    level: "M",
+    bgColor: "#ffffff",
+    fgColor: dark,
+    includeMargin: true
+  }));
+}
+
+function upiPaymentUri(t, amount, invoiceNumber) {
+  if (!t.upi) return "";
+  const params = new URLSearchParams({
+    pa: t.upi,
+    pn: t.biz || "Business",
+    am: Number(amount || 0).toFixed(2),
+    cu: "INR",
+    tn: `Invoice ${invoiceNumber || t.invoiceNumber || "INV"}`
+  });
+  return `upi://pay?${params.toString()}`;
+}
 
 export const ARTS = [
   ["none", "None"], ["waves", "Waves"], ["blobs", "Blobs"],
@@ -614,6 +649,7 @@ export function fmtOf(t) {
     cols: baseF.cols || [["desc", "Item"], ["hsn", "HSN/SAC", 0, 1], ["qty", "Qty", "r"], ["rate", "Rate", "r"], ["amt", "Amount", "r"]],
     rows,
     adv: t.adv !== undefined ? parseFloat(t.adv) : baseF.adv,
+    advLbl: t.advLbl || baseF.advLbl,
     notes: (t.notes && t.notes.length) ? (Array.isArray(t.notes) ? t.notes : t.notes.split('\n')) : (isCustomBiz ? [] : (baseF.notes || []))
   };
 }
@@ -692,7 +728,11 @@ export function renderA4(t, o = {}) {
   const qd = o.qr === "brand" || o.qr === "dots" ? (lum(pal.acc) < .3 ? pal.acc : pal.ink) : "#14161C";
   const qrCustom = o.qrImg || t.qrImg || t.upiQrUrl;
   const reviewQrCustom = o.reviewQrImg || t.reviewQrImg || t.reviewQrUrl;
-  const pay = t.showUpiDetails === false ? "" : `<div class="py">${qrCustom ? `<div style="width:48px;height:48px;min-width:48px;display:flex;align-items:center;justify-content:center;background:#fff;border-radius:6px;border:1px solid #cbd5e1;overflow:hidden;padding:2px;box-sizing:border-box;"><img src="${qrCustom}" alt="UPI QR" style="width:100%;height:100%;object-fit:contain;display:block;" /></div>` : qr((t.id || "inv") + (o.l || "band"), { dark: qd, style: o.qr === "dots" ? "dots" : "classic", logoTxt: t.logo || "IN", logoImg: o.logoImg })}<div><b>${EN.pay}</b>${t.upi ? `<div class="sm">${t.upi}</div>` : ""}</div></div>`;
+  const paymentQrValue = upiPaymentUri(t, c.due, no);
+  const paymentQrMarkup = qrCustom
+    ? `<div style="width:4.6em;height:4.6em;min-width:4.6em;display:flex;align-items:center;justify-content:center;background:#fff;border-radius:6px;border:1px solid #cbd5e1;overflow:hidden;padding:2px;box-sizing:border-box;"><img src="${qrCustom}" alt="UPI QR" style="width:100%;height:100%;object-fit:contain;display:block;" /></div>`
+    : (paymentQrValue ? `<div style="width:4.6em;height:4.6em;min-width:4.6em;display:flex;align-items:center;justify-content:center;background:#fff;border-radius:6px;border:1px solid #cbd5e1;overflow:hidden;padding:2px;box-sizing:border-box;">${renderQrSvg(paymentQrValue, qd, 128)}</div>` : "");
+  const pay = t.showUpiDetails === false || !paymentQrMarkup ? "" : `<div class="py">${paymentQrMarkup}<div><b>${EN.pay}</b>${t.upi ? `<div class="sm">${t.upi}</div>` : ""}</div></div>`;
   const details = `<div class="dt">${F.meta.map(m => `<div><span>${m[0]}</span>${m[1]}</div>`).join("")}<div><span>Due date</span>${t.dueDate || "19 Nov 2026"}</div>${lvl === 2 ? `<div><span>Supply type</span>${t.intra !== false ? "Intra-state" : "Inter-state"}</div>` : ""}</div>`;
   const hsnT = (lvl && F.hsnSum) || lvl === 2 ? `<div class="hsnw"><div class="lb">HSN / SAC summary</div><table class="hsnt"><thead><tr><th>HSN/SAC</th><th class="r">Taxable</th><th class="r">Rate</th>${t.intra !== false ? '<th class="r">CGST</th><th class="r">SGST</th>' : '<th class="r">IGST</th>'}<th class="r">Total tax</th></tr></thead><tbody>${c.hsn.map(h => `<tr><td>${h.hsn}</td><td class="r num">${fmt2(h.taxable)}</td><td class="r num">${h.gst}%</td>${t.intra !== false ? `<td class="r num">${fmt2(h.tax / 2)}</td><td class="r num">${fmt2(h.tax / 2)}</td>` : `<td class="r num">${fmt2(h.tax)}</td>`}<td class="r num">${fmt2(h.tax)}</td></tr>`).join("")}</tbody></table></div>` : "";
   const notes = (F.notes && F.notes.length ? F.notes : ["Payment due within 15 days. Interest at 18% p.a. on late payment."]).map(n => `<li>${n}</li>`).join("");
@@ -759,14 +799,17 @@ export function renderPhone(t, o = {}) {
   const lines = c.lines.map(l => `<div class="ln"><span>${l.desc}<small>${l.rate ? `${l.qty.toLocaleString("en-IN")} ${l.unit} × ${fmt(l.rate)}` : (l.sub || l.nw || "")}</small></span><span>${fmt(l.net)}</span></div>`).join("");
   const mt = o.msg || "none", mtext = o.msgText || msgDefault(mt, t);
   const reviewQrCustom = o.reviewQrImg || t.reviewQrImg || t.reviewQrUrl;
-  const paymentQr = t.showUpiDetails === false ? null : (o.qrImg || t.qrImg || t.upiQrUrl);
+  const paymentQr = t.showUpiDetails === false ? "" : (o.qrImg || t.qrImg || t.upiQrUrl);
+  const paymentQrMarkup = paymentQr
+    ? `<img src="${paymentQr}" alt="UPI payment QR" style="width:88px;height:88px;object-fit:contain" />`
+    : renderQrSvg(upiPaymentUri(t, c.due, t.invoiceNumber), pal.ink, 120);
   const reviewMessage = mt === "review" && reviewQrCustom
     ? `<div class="msgp" style="display:flex;align-items:center;gap:10px"><img src="${reviewQrCustom}" alt="Rate us QR" style="width:56px;height:56px;object-fit:contain;flex:none"/><span><b>Rate us</b><br>${mtext}</span></div>`
     : (mt !== "none" ? `<div class="msgp">${mtext}</div>` : "");
   return `<div class="ph" style='${R.vars}'>${rib}<div class="phero">${A}<div class="in"><span class="sm">${t.biz} · ${F.doc}</span><span class="sm">${st === "paid" ? "Paid in full" : L("due")} · ${st === "overdue" ? "was due 23 Oct" : (t.dueDate || "19 Nov 2026")}</span><span class="big">${fmt(st === "paid" ? c.total : c.due)}</span><span class="sm">${words(st === "paid" ? c.total : c.due)}</span></div></div>
   <div class="sec">${lines}<div class="ln"><span>GST${c.rcm ? " · paid by you under RCM" : ""}</span><span>${fmt(c.tax)}</span></div>${c.less.map(x => `<div class="ln"><span>${x.label}</span><span>−${fmt(x.amt)}</span></div>`).join("")}${c.adv ? `<div class="ln"><span>${c.advLbl}</span><span>−${fmt(c.adv)}</span></div>` : ""}</div>
   ${t.showUpiDetails === false ? "" : (st === "paid" ? `<div class="sec"><div class="ln"><b>Receipt</b><span>Paid 16 Nov · UPI</span></div></div>` : `<div class="sec"><div class="paybtn">Pay ${fmt(c.due)} with UPI</div><div class="alt"><span class="nofee">No fee</span><span>Card +2%</span><span>Bank transfer</span></div></div>`)}
-  ${paymentQr ? `<div class="sec" style="display:grid;justify-items:center;gap:6px"><span>Scan to pay via UPI</span><img src="${paymentQr}" alt="UPI QR" style="width:88px;height:88px;object-fit:contain" /></div>` : ""}
+  ${paymentQrMarkup ? `<div class="sec" style="display:grid;justify-items:center;gap:6px"><span>Scan to pay via UPI</span>${paymentQrMarkup}</div>` : ""}
   ${reviewMessage}
   <div class="sec" style="border:0">${o.seal !== false ? `<span class="seal">✓ Verified invoice · tap to check</span>` : ""}<div class="alt" style="justify-content:space-between"><span>Download PDF</span><span>GST details ›</span></div>${F.refs ? `<div class="alt"><span>View design board ›</span></div>` : ""}${F.web || F.social ? `<div class="alt"><span>${[F.web, F.social].filter(Boolean).join(" · ")}</span></div>` : ""}</div>
   ${festBar(o.occ ?? t.occ, t)}${st === "paid" ? `<div class="stamp">PAID</div>` : ""}</div>`;
@@ -777,20 +820,20 @@ export function renderThermal(t, o = {}) {
   const st = o.status || "sent", c = calc(t, st), F = c.F, occ = o.occ ?? t.occ, mt = o.msg || "none", mtext = o.msgText || msgDefault(mt, t);
   const n2 = v => v.toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
   const lines = c.lines.map(l => `<div>${l.desc}</div><div class="ln"><span>${l.rate ? `${l.qty.toLocaleString("en-IN")} ${l.unit} x ${l.rate.toLocaleString("en-IN")}` : (l.nw || "")}</span><span>${n2(l.net)}</span></div>`).join("");
+  const qrCustom = o.qrImg || t.qrImg || t.upiQrUrl;
+  const thermalPaymentQr = t.showUpiDetails === false ? "" : qrCustom
+    ? `<img src="${qrCustom}" alt="UPI payment QR" style="width:96px;height:96px;object-fit:contain;justify-self:center" />`
+    : (t.upi ? renderQrSvg(upiPaymentUri(t, c.due, t.invoiceNumber), "#000000", 192) : "");
   return `<div class="th"><div class="c b" style="font-size:1.15em">${t.biz}</div><div class="c">${t.city || ""}</div><div class="c">GSTIN ${t.gstin || "N/A"}</div>${F.ids ? `<div class="c">${F.ids}</div>` : ""}<div class="dl"></div><div class="c b">${F.doc.toUpperCase()}</div><div class="ln"><span>${t.invoiceNumber || "INV-001"}</span><span>${t.invoiceDate || "04-11-2026"}</span></div><div>To: ${F.parties[0].n}</div><div class="dl"></div>${lines}<div class="dl"></div>
   <div class="ln"><span>Taxable</span><span>${n2(c.taxable)}</span></div>${c.byRate.filter(b => b.r > 0).map(b => `<div class="ln"><span>${t.intra !== false ? "CGST+SGST" : "IGST"} ${b.r}%${c.rcm ? " RCM" : ""}</span><span>${n2(b.tax)}</span></div>`).join("")}<div class="ln big"><span>TOTAL</span><span>${fmt(c.total)}</span></div>${c.less.map(x => `<div class="ln"><span>${x.label}</span><span>-${n2(x.amt)}</span></div>`).join("")}${c.adv ? `<div class="ln"><span>Advance</span><span>-${c.adv.toLocaleString("en-IN")}</span></div>` : ""}<div class="ln b"><span>${st === "paid" ? "PAID" : "DUE"}</span><span>${fmt(st === "paid" ? c.total : c.due)}</span></div><div class="dl"></div>
-  ${t.showUpiDetails === false ? "" : `<div class="c">Scan to pay by UPI</div>${qr((t.id || "inv") + "th", { dark: "#000", style: o.qr === "dots" ? "dots" : "classic", logoTxt: t.logo || "IN" })}<div class="c">${t.upi || "pay@upi"}</div><div class="dl"></div>`}${occ && occ !== "none" ? `<div class="c b">*** ${OCCDEF[occ].greet}! ***</div>` : ""}${mt !== "none" ? `<div class="c">${mtext}</div>` : ""}<div class="c">${o.seal !== false ? "Verify: invoxa.io/v/7F3K92" : ""}</div><div class="c">Thank you, visit again</div></div>`;
+  ${thermalPaymentQr ? `<div class="c">Scan to pay by UPI</div>${thermalPaymentQr}${t.upi ? `<div class="c">${t.upi}</div>` : ""}<div class="dl"></div>` : ""}${occ && occ !== "none" ? `<div class="c b">*** ${OCCDEF[occ].greet}! ***</div>` : ""}${mt !== "none" ? `<div class="c">${mtext}</div>` : ""}<div class="c">${o.seal !== false ? "Verify: invoxa.io/v/7F3K92" : ""}</div><div class="c">Thank you, visit again</div></div>`;
 }
 
 export const render = (t, o = {}) => {
   if (o.out === "phone") return renderPhone(t, o);
   if (o.out === "thermal") {
     let html = renderThermal(t, o);
-    const paymentQr = t.showUpiDetails === false ? null : (o.qrImg || t.qrImg || t.upiQrUrl);
     const reviewQr = o.reviewQrImg || t.reviewQrImg || t.reviewQrUrl;
-    if (paymentQr) {
-      html = html.replace(/<svg[\s\S]*?<\/svg>/, `<img src="${paymentQr}" alt="UPI QR" style="width:96px;height:96px;object-fit:contain;justify-self:center" />`);
-    }
     if (o.msg === "review" && reviewQr) {
       const reviewText = o.msgText || msgDefault("review", t);
       const reviewTextMarkup = `<div class="c">${reviewText}</div>`;
@@ -870,20 +913,21 @@ export function invoxaInvoiceToEngineTemplate(inv) {
     fb: tpl.fb || "Manrope",
     fn: tpl.fn || "IBM Plex Mono",
     ink: tpl.ink || "#151A2D",
-    acc: inv.themeColor || tpl.acc || (inv.layout === 'classic' || inv.layout === 'receipt' || inv.layout === 'thermal' ? '#1e293b' : '#0E5E5A'),
-    acc2: tpl.acc2 || (inv.layout === 'classic' || inv.layout === 'receipt' ? '#475569' : '#3FA79B'),
-    soft: tpl.soft || (inv.layout === 'classic' || inv.layout === 'receipt' ? '#F8FAFC' : '#E6F2F0'),
+    acc: INVOICE_THEME_PALETTES[inv.theme]?.acc || inv.themeColor || tpl.acc || (inv.layout === 'classic' || inv.layout === 'receipt' || inv.layout === 'thermal' ? '#1e293b' : '#0E5E5A'),
+    acc2: INVOICE_THEME_PALETTES[inv.theme]?.acc2 || tpl.acc2 || (inv.layout === 'classic' || inv.layout === 'receipt' ? '#475569' : '#3FA79B'),
+    soft: INVOICE_THEME_PALETTES[inv.theme]?.soft || tpl.soft || (inv.layout === 'classic' || inv.layout === 'receipt' ? '#F8FAFC' : '#E6F2F0'),
     art: inv.artStyle || tpl.art || (inv.layout === 'classic' || inv.layout === 'receipt' || inv.layout === 'thermal' ? 'none' : 'waves'),
     client: client.name || tpl.client || "Customer",
     ccity: [client.address, client.city, client.state].filter(Boolean).join(", ") || tpl.ccity || "",
     cg: client.gstin || tpl.cg || "",
     gst: inv.items && inv.items[0] ? (inv.items[0].taxRate || 18) : (tpl.gst || 18),
-    intra,
+    intra: typeof inv.isInterState === 'boolean' ? !inv.isInterState : intra,
     invoiceNumber: inv.invoiceNumber || inv.quoteNumber || tpl.invoiceNumber || "INV-2026-001",
     invoiceDate: inv.invoiceDate || inv.quoteDate || tpl.invoiceDate || new Date().toISOString().split('T')[0],
     dueDate: inv.dueDate || inv.validUntil || tpl.dueDate || new Date(Date.now() + 15 * 86400000).toISOString().split('T')[0],
     po: tpl.po || inv.poNumber || "WO-2026-118",
-    adv: parseFloat(tpl.adv !== undefined ? tpl.adv : (inv.advancePaid || 0)),
+    adv: parseFloat(Number(inv.customerCreditApplied) > 0 ? inv.customerCreditApplied : (tpl.adv !== undefined ? tpl.adv : (inv.advancePaid || 0))),
+    advLbl: Number(inv.customerCreditApplied) > 0 ? "Customer credit applied" : (tpl.advLbl || "Advance received"),
     board: tpl.board,
     site: tpl.site,
     stage: tpl.stage,
@@ -895,3 +939,4 @@ export function invoxaInvoiceToEngineTemplate(inv) {
     email: seller.email || tpl.email || ""
   };
 }
+

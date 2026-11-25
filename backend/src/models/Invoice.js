@@ -9,6 +9,24 @@ const invoiceItemSchema = new mongoose.Schema({
   taxRate: { type: Number, default: 18 }
 }, { _id: false })
 
+const customerCreditApplicationSchema = new mongoose.Schema({
+  creditNoteId: { type: String, required: true },
+  amount: { type: Number, required: true, min: 0 }
+}, { _id: false })
+
+const eWayBillSchema = new mongoose.Schema({
+  number: { type: String, trim: true },
+  validUntil: { type: String },
+  transportMode: { type: String, enum: ['road', 'rail', 'air', 'ship', 'other'] },
+  transporterName: { type: String, trim: true },
+  transporterId: { type: String, trim: true },
+  vehicleNumber: { type: String, trim: true },
+  distanceKm: { type: Number, min: 0 },
+  transportDocumentNumber: { type: String, trim: true },
+  transportDocumentDate: { type: String },
+  recordedAt: { type: Date }
+}, { _id: false })
+
 const sellerSchema = new mongoose.Schema({
   name: { type: String },
   gstin: { type: String },
@@ -43,6 +61,9 @@ const invoiceSchema = new mongoose.Schema({
   },
   items: [invoiceItemSchema],
   discountRate: { type: Number, default: 0 },
+  isInterState: { type: Boolean, default: undefined },
+  customerCreditApplied: { type: Number, default: 0, min: 0 },
+  customerCreditApplications: [customerCreditApplicationSchema],
   paymentDetails: {
     bankName: { type: String },
     accountNumber: { type: String },
@@ -51,6 +72,7 @@ const invoiceSchema = new mongoose.Schema({
     upiId: { type: String },
     upiQrUrl: { type: String }
   },
+  eWayBill: { type: eWayBillSchema, default: undefined },
   upiQrUrl: { type: String },
   notes: { type: String },
   terms: { type: String },

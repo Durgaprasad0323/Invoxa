@@ -51,6 +51,9 @@ const responseExample = `{
   }
 }`
 
+const statusCurlExample = `curl -X GET "https://YOUR_INVOXA_API_HOST/api/v1/status" \\
+  -H "Authorization: Bearer YOUR_INVOXA_API_KEY"`
+
 const prettyDate = (value) => {
   if (!value) return 'Never used'
   const date = new Date(value)
@@ -72,6 +75,8 @@ export default function DeveloperApiWorkspaceView({ currentUser = {}, onInvoiceC
   const [copied, setCopied] = useState(false)
   const [isLoading, setIsLoading] = useState(true)
   const [isCreating, setIsCreating] = useState(false)
+  const [isVerifyingKey, setIsVerifyingKey] = useState(false)
+  const [keyVerification, setKeyVerification] = useState(null)
   const [testingKeyId, setTestingKeyId] = useState('')
   const [error, setError] = useState('')
   const [notice, setNotice] = useState('')
@@ -79,6 +84,7 @@ export default function DeveloperApiWorkspaceView({ currentUser = {}, onInvoiceC
   const activeKeyCount = keys.filter(key => !key.revokedAt).length
   const hasActiveEnterprise = hasPlanAccess(currentUser, 'enterprise')
   const hasExpiredEnterprise = currentUser.plan === 'enterprise' && !hasActiveEnterprise
+  const enterpriseBillingCycle = currentUser.billingCycle === 'monthly' ? 'Monthly' : 'Yearly'
   const expiryDate = currentUser.subscriptionExpiry ? new Date(currentUser.subscriptionExpiry) : null
   const expiryLabel = expiryDate && !Number.isNaN(expiryDate.getTime())
     ? expiryDate.toLocaleDateString('en-IN', { dateStyle: 'medium' })
@@ -124,7 +130,15 @@ export default function DeveloperApiWorkspaceView({ currentUser = {}, onInvoiceC
       setKeyName('')
       setNewKey(result)
       setCopied(false)
-      setNotice(result.message)
+      setKeyVerification(null)
+      try {
+        const verification = await api.verifyDeveloperKey(result.secret)
+        setKeyVerification(verification)
+        setNotice(`API key created, saved, and verified as active (${verification.environment}).`)
+      } catch (verifyError) {
+        setKeyVerification({ status: 'unverified', message: verifyError.message || 'The connection check did not complete.' })
+        setError(`The key was created, but Invoxa could not verify it yet. Retry the connection check before using it. ${verifyError.message || ''}`.trim())
+      }
     } catch (err) {
       setError(err.message || 'Could not create the API key.')
     } finally {
@@ -143,6 +157,23 @@ export default function DeveloperApiWorkspaceView({ currentUser = {}, onInvoiceC
     }
   }
 
+  const handleVerifyKey = async () => {
+    if (!newKey?.secret || newKey.key.revokedAt) return
+    setIsVerifyingKey(true)
+    setKeyVerification(null)
+    setError('')
+    try {
+      const verification = await api.verifyDeveloperKey(newKey.secret)
+      setKeyVerification(verification)
+      setNotice(`API key is active (${verification.environment}).`)
+    } catch (err) {
+      setKeyVerification({ status: 'unverified', message: err.message || 'The connection check failed.' })
+      setError(err.message || 'Invoxa could not verify this API key.')
+    } finally {
+      setIsVerifyingKey(false)
+    }
+  }
+
   const handleRevoke = async (key) => {
     if (!window.confirm(`Revoke "${key.name}"? Software using this key will stop working.`)) return
     setError('')
@@ -151,6 +182,7 @@ export default function DeveloperApiWorkspaceView({ currentUser = {}, onInvoiceC
       const result = await api.revokeDeveloperKey(key.id)
       setKeys((previous) => previous.map(item => item.id === key.id ? result.key : item))
       if (newKey?.key?.id === key.id) setNewKey(null)
+      if (newKey?.key?.id === key.id) setKeyVerification(null)
       if (testingKeyId === key.id) setTestResult(null)
       setNotice('API key revoked.')
     } catch (err) {
@@ -207,7 +239,7 @@ export default function DeveloperApiWorkspaceView({ currentUser = {}, onInvoiceC
 
       <div className={`developer-enterprise-access ${hasActiveEnterprise ? '' : hasExpiredEnterprise ? 'expired' : 'free'}`}>
         <strong>{hasActiveEnterprise ? 'Enterprise API access' : 'Free Web API access'} · {activeKeyCount}/{maxActiveKeys} active keys</strong>
-        <span>{hasActiveEnterprise ? `Annual access through ${expiryLabel} (no automatic renewal). Sandbox and Live keys are available with the active Enterprise plan.` : 'Free includes one active Live Web integration key for invoice creation. Enterprise adds Sandbox access and up to 10 active keys.'}</span>
+        <span>{hasActiveEnterprise ? `${enterpriseBillingCycle} access through ${expiryLabel} (no automatic renewal). Sandbox and Live keys are available with the active Enterprise plan.` : 'Free includes one active Live Web integration key for invoice creation. Enterprise adds Sandbox access and up to 10 active keys.'}</span>
         {!hasActiveEnterprise && <button type="button" className="plan-preview-compare-button" onClick={() => onSubscribe?.('enterprise')}>Upgrade to Enterprise</button>}
       </div>
 
@@ -309,6 +341,14 @@ export default function DeveloperApiWorkspaceView({ currentUser = {}, onInvoiceC
                 <input aria-label="New API key" readOnly value={newKey.secret} className="api-key-field" />
                 <button type="button" className="copy-key-btn" onClick={handleCopyKey}>{copied ? 'Copied' : 'Copy key'}</button>
               </div>
+              <button type="button" className="copy-doc-btn" onClick={handleVerifyKey} disabled={isVerifyingKey}>
+                {isVerifyingKey ? 'Checking connection…' : 'Verify API key'}
+              </button>
+              {keyVerification && <div className={`developer-api-alert ${keyVerification.status === 'active' ? 'success' : 'error'}`} role="status">
+                {keyVerification.status === 'active'
+                  ? `Verified: this ${keyVerification.environment} key is active. The check did not create an invoice.`
+                  : `Not verified: ${keyVerification.message}`}
+              </div>}
             </div>
           )}
 
@@ -352,6 +392,15 @@ export default function DeveloperApiWorkspaceView({ currentUser = {}, onInvoiceC
         </section>
 
         <section className="api-card">
+          <h4>Verify that your key is active</h4>
+          <p className="card-subtext">This read-only request confirms the key is recognized. It does not create an invoice.</p>
+          <div className="api-endpoint-line"><span>GET</span><code>/api/v1/status</code></div>
+          <pre className="code-block"><code>{statusCurlExample}</code></pre>
+          <button type="button" className="copy-doc-btn" onClick={() => copyText(statusCurlExample)}>Copy verification request</button>
+          <p className="card-subtext">A successful response reports <code>status: active</code> and whether the key is Live or Sandbox.</p>
+        </section>
+
+        <section className="api-card">
           <h4>2. Send an invoice request</h4>
           <p className="card-subtext">Use this endpoint from your backend server. Replace the host and key placeholders with your deployment URL and key.</p>
           <div className="api-endpoint-line"><span>POST</span><code>/api/v1/invoices</code></div>
@@ -377,9 +426,10 @@ export default function DeveloperApiWorkspaceView({ currentUser = {}, onInvoiceC
             <li><code>items[].description</code>, <code>quantity</code>, <code>rate</code></li>
           </ul>
           <p className="card-subtext">Optional fields include client email, phone, address, state, GSTIN; item HSN/SAC and taxRate; invoiceDate, dueDate, invoiceNumber, discountRate, notes, and terms.</p>
-          <p className="developer-api-label">Successful response: HTTP 201</p>
+          <p className="developer-api-label">Live success: HTTP 201. Sandbox success: HTTP 200 and no invoice is saved.</p>
+          <p className="developer-api-label">Example live response</p>
           <pre className="code-block"><code>{responseExample}</code></pre>
-          <div className="developer-api-note">Live requests save invoices under the business linked to the key. Sandbox requests return a preview without saving. Authentication errors return <code>401</code>, invalid invoice details return <code>400</code>, plan restrictions return <code>403</code>, and the request limit returns <code>429</code>.</div>
+          <div className="developer-api-note">Live requests save invoices under the business linked to the key. Sandbox requests return a preview with <code>simulated: true</code> and do not save. Authentication errors return <code>401</code>, invalid invoice details return <code>400</code>, plan restrictions return <code>403</code>, and the request limit returns <code>429</code>.</div>
         </section>
 
         <section className="api-card full-span">

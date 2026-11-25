@@ -19,6 +19,7 @@ import {
   FONTPAIRS,
   LANGS,
   palFrom,
+  fmtOf,
   render,
   msgDefault
 } from '../utils/engineRenderer'
@@ -26,6 +27,15 @@ import { addFreeInvoiceWatermark } from '../utils/invoiceWatermark'
 import { loadHtml2Pdf } from '../utils/pdfGenerator'
 import Icon from './ui/Icon'
 import '../templateEngine.css'
+
+const getCustomizerItems = (style) => fmtOf(style).rows.map(row => ({
+  desc: row.desc || 'Item',
+  hsn: row.hsn || '998314',
+  qty: row.qty || 1,
+  rate: row.rate || 0,
+  unit: row.unit || 'nos',
+  gst: row.gst !== undefined ? row.gst : (style.gst || 18)
+}))
 
 export default function TemplateMixer({
   invoiceToEdit,
@@ -37,52 +47,59 @@ export default function TemplateMixer({
   businessProfile = {},
   initialIndustry = 'interior'
 }) {
+  const initialIndObj = INDUSTRIES.find(x => x.id === initialIndustry) || INDUSTRIES[0]
+  const initialStyleObj = STYLES.find(x => x.id === (initialIndObj?.s || 'studio')) || STYLES[0]
+  const initialNamedPalette = initialIndObj?.pal
+    ? Object.entries(PAL_FAM).flatMap(([family, palettes]) => palettes.map(palette => ({ family, palette }))).find(({ palette }) => palette[0] === initialIndObj.pal)
+    : null
+  const initialFontPairIndex = initialIndObj?.fp
+    ? FONTPAIRS.findIndex(fontPair => fontPair.fd === initialIndObj.fp[0] && fontPair.fb === initialIndObj.fp[1])
+    : -1
+
   const [activeTab, setActiveTab] = useState('start')
   const [mobileMixerTab, setMobileMixerTab] = useState('controls') // 'stage' | 'controls'
   
   // Mixer State
-  const [currentStyleId, setCurrentStyleId] = useState('studio')
-  const [currentIndustryId, setCurrentIndustryId] = useState(initialIndustry)
-  const [layout, setLayout] = useState('band')
+  const [currentStyleId, setCurrentStyleId] = useState(initialStyleObj.id)
+  const [currentIndustryId, setCurrentIndustryId] = useState(initialIndObj.id)
+  const [industryStarterHasBeenApplied, setIndustryStarterHasBeenApplied] = useState(false)
+  const [layout, setLayout] = useState(initialIndObj.l || 'band')
   const [output, setOutput] = useState('a4')
-  const [detailLevel, setDetailLevel] = useState('1')
+  const [detailLevel, setDetailLevel] = useState(initialIndObj.lvl || '1')
   const [invoiceCopy, setInvoiceCopy] = useState('0')
   const [textSize, setTextSize] = useState('1')
   
-  const [palFamily, setPalFamily] = useState('Indian heritage')
-  const [activePalette, setActivePalette] = useState(null)
-  const [paletteName, setPaletteName] = useState(null)
+  const [palFamily, setPalFamily] = useState(initialNamedPalette?.family || 'Indian heritage')
+  const [activePalette, setActivePalette] = useState(() => initialNamedPalette ? palFrom(initialNamedPalette.palette[1], initialNamedPalette.palette[2]) : null)
+  const [paletteName, setPaletteName] = useState(initialNamedPalette?.palette[0] || null)
   const [paperFinish, setPaperFinish] = useState('white')
   const [paperColor, setPaperColor] = useState(null)
   
-  const [fontPairIdx, setFontPairIdx] = useState('')
-  const [selectedLang, setSelectedLang] = useState('en')
+  const [fontPairIdx, setFontPairIdx] = useState(initialFontPairIndex >= 0 ? String(initialFontPairIndex) : '')
+  const [selectedLang, setSelectedLang] = useState(initialIndObj.lang || initialStyleObj.lang || 'en')
   
-  const [tableStyle, setTableStyle] = useState('clean')
-  const [colRenames, setColRenames] = useState({ item: '', qty: '', rate: '', amt: '' })
+  const [tableStyle, setTableStyle] = useState(initialIndObj.tb || 'clean')
+  const [colRenames, setColRenames] = useState({ ...(initialIndObj.cols || {}) })
   
-  const [stampStyle, setStampStyle] = useState('brand')
+  const [stampStyle, setStampStyle] = useState(initialIndObj.stamp || 'brand')
   const [sigType, setSigType] = useState('script')
   const [sigImgData, setSigImgData] = useState(null)
-  const [qrStyle, setQrStyle] = useState('dots')
-  const [footerMsgType, setFooterMsgType] = useState('review')
+  const [qrStyle, setQrStyle] = useState(initialIndObj.qr || 'classic')
+  const [footerMsgType, setFooterMsgType] = useState(initialIndObj.msg || 'none')
   const [footerCustomMsg, setFooterCustomMsg] = useState('')
   
-  const [brandArt, setBrandArt] = useState('waves')
+  const [brandArt, setBrandArt] = useState(initialIndObj.art || initialStyleObj.art || 'none')
   const [artVariation, setArtVariation] = useState(0)
   const [docStatus, setDocStatus] = useState('sent')
-  const [festiveOcc, setFestiveOcc] = useState('none')
+  const [festiveOcc, setFestiveOcc] = useState(initialIndObj.occ || initialStyleObj.occ || 'none')
   const [verifiedSeal, setVerifiedSeal] = useState(true)
   
   const [logoImgUrl, setLogoImgUrl] = useState(null)
   const [upiQrUrl, setUpiQrUrl] = useState(() => invoiceToEdit?.paymentDetails?.upiQrUrl || invoiceToEdit?.upiQrUrl || (businessProfile.upiQrUrl !== undefined ? businessProfile.upiQrUrl || null : invoiceToEdit?.templateStyle?.qrImg || null))
   const [reviewQrUrl, setReviewQrUrl] = useState(() => invoiceToEdit?.reviewQrUrl || invoiceToEdit?.templateStyle?.reviewQrImg || null)
   const [logoPalettes, setLogoPalettes] = useState([])
-  const [baseStarterName, setBaseStarterName] = useState('Interior designer starter')
+  const [baseStarterName, setBaseStarterName] = useState(`${initialIndObj.name.split('/')[0].trim()} starter`)
   
-  const initialIndObj = INDUSTRIES.find(x => x.id === initialIndustry) || INDUSTRIES[0]
-  const initialStyleObj = STYLES.find(x => x.id === (initialIndObj?.s || 'studio')) || STYLES[0]
-
   // Customizer Modal State - initialized to the active starter style
   const [modalOpen, setModalOpen] = useState(false)
   const [modalStep, setModalStep] = useState(1) // 1: form, 2: preview
@@ -103,16 +120,7 @@ export default function TemplateMixer({
   const [cuAc, setCuAc] = useState(businessProfile.accountNumber ?? initialStyleObj.bank?.[1] ?? '')
   const [cuIfsc, setCuIfsc] = useState(businessProfile.ifsc ?? initialStyleObj.bank?.[2] ?? '')
   const [cuUpi, setCuUpi] = useState(businessProfile.upiId ?? initialStyleObj.upi ?? '')
-  const [cuItems, setCuItems] = useState(() =>
-    (initialStyleObj.items || []).map(it => ({
-      desc: it[0],
-      hsn: it[1] || '998314',
-      qty: it[2] || 1,
-      rate: it[3] || 1000,
-      unit: it[4] || 'nos',
-      gst: initialStyleObj.gst || 18
-    }))
-  )
+  const [cuItems, setCuItems] = useState(() => getCustomizerItems(initialStyleObj))
   const [cuAdv, setCuAdv] = useState(initialStyleObj.adv !== undefined ? initialStyleObj.adv : 30000)
   const [customPreviewHtml, setCustomPreviewHtml] = useState(null)
   const [zoomMode, setZoomMode] = useState('fit')
@@ -124,6 +132,7 @@ export default function TemplateMixer({
   const [pdfGenerating, setPdfGenerating] = useState(false)
   const [saveSuccessToast, setSaveSuccessToast] = useState(null)
   const [isSaving, setIsSaving] = useState(false)
+  const invoiceSourceRef = useRef(invoiceToEdit?.id || invoiceToEdit?.invoiceNumber || null)
 
   const requestWatermarkUpgrade = () => onUpgrade?.('pro')
   const handleMixerDocumentTypeChange = (nextType) => {
@@ -145,6 +154,12 @@ export default function TemplateMixer({
 
   // Synchronize customizer state when invoiceToEdit is provided
   useEffect(() => {
+    const invoiceSourceId = invoiceToEdit?.id || invoiceToEdit?.invoiceNumber || null
+    if (invoiceSourceRef.current !== invoiceSourceId) {
+      invoiceSourceRef.current = invoiceSourceId
+      setIndustryStarterHasBeenApplied(false)
+    }
+
     if (invoiceToEdit) {
       const inv = invoiceToEdit
       const s = inv.templateStyle || {}
@@ -207,14 +222,9 @@ export default function TemplateMixer({
           gst: it.taxRate || 18
         })))
       } else if (s.items && s.items.length > 0) {
-        setCuItems(s.items.map(it => ({
-          desc: it[0],
-          hsn: it[1] || '998314',
-          qty: it[2] || 1,
-          rate: it[3] || 1000,
-          unit: it[4] || 'nos',
-          gst: s.gst || 18
-        })))
+        setCuItems(getCustomizerItems(s))
+      } else if (s.id) {
+        setCuItems(getCustomizerItems(s))
       }
 
       if (inv.advancePaid !== undefined) {
@@ -471,7 +481,7 @@ export default function TemplateMixer({
 
   const currentStyle = {
     ...baseStyle,
-    ...safeTplStyle,
+    ...(industryStarterHasBeenApplied ? {} : safeTplStyle),
     isCustomInvoice: userHasCustomBiz,
     docType: cuDocType,
     biz: cuBiz && cuBiz.trim() ? cuBiz.trim() : (invoiceToEdit?.seller?.name || baseStyle.biz),
@@ -486,9 +496,9 @@ export default function TemplateMixer({
     invoiceNumber: cuNo && cuNo.trim() ? cuNo.trim() : (invoiceToEdit?.invoiceNumber || `INV-2026-${String(100 + (baseStyle.id ? baseStyle.id.length * 17 : 34) + (layout ? layout.length * 7 : 28)).padStart(4, '0')}`),
     invoiceDate: cuDate || invoiceToEdit?.invoiceDate,
     dueDate: cuDue || invoiceToEdit?.dueDate,
-    po: invoiceToEdit?.templateStyle?.po || invoiceToEdit?.poNumber || baseStyle.po,
+    po: industryStarterHasBeenApplied ? (baseStyle.po || invoiceToEdit?.poNumber) : (invoiceToEdit?.templateStyle?.po || invoiceToEdit?.poNumber || baseStyle.po),
     adv: cuAdv !== undefined ? parseFloat(cuAdv) : (invoiceToEdit?.templateStyle?.adv !== undefined ? invoiceToEdit.templateStyle.adv : (invoiceToEdit?.advancePaid !== undefined ? invoiceToEdit.advancePaid : baseStyle.adv)),
-    board: invoiceToEdit?.templateStyle?.board || baseStyle.board,
+    board: industryStarterHasBeenApplied ? baseStyle.board : (invoiceToEdit?.templateStyle?.board || baseStyle.board),
     notes: cuNotes ? cuNotes.split('\n').filter(Boolean) : (invoiceToEdit?.notes ? (Array.isArray(invoiceToEdit.notes) ? invoiceToEdit.notes : invoiceToEdit.notes.split('\n')) : baseStyle.notes),
     upi: cuUpi || invoiceToEdit?.paymentDetails?.upiId || (businessProfile.upiId !== undefined ? businessProfile.upiId : baseStyle.upi || ''),
     showUpiDetails: Boolean(cuUpi || invoiceToEdit?.paymentDetails?.upiId || upiQrUrl),
@@ -507,10 +517,11 @@ export default function TemplateMixer({
           it.hsn || '998314',
           parseFloat(it.qty) || 1,
           parseFloat(it.rate) || 0,
-          it.unit || 'nos'
+          it.unit || 'nos',
+          it.gst !== undefined ? parseFloat(it.gst) : (baseStyle.gst || 18)
         ])
-      : (invoiceToEdit?.templateStyle?.items || baseStyle.items),
-    gst: (cuItems && cuItems[0]?.gst) || invoiceToEdit?.templateStyle?.gst || baseStyle.gst || 18
+      : (industryStarterHasBeenApplied ? baseStyle.items : (invoiceToEdit?.templateStyle?.items || baseStyle.items)),
+    gst: (cuItems && cuItems[0]?.gst) || (industryStarterHasBeenApplied ? baseStyle.gst : invoiceToEdit?.templateStyle?.gst) || baseStyle.gst || 18
   }
 
   // Options for renderer
@@ -548,19 +559,43 @@ export default function TemplateMixer({
     const p = INDUSTRIES.find(x => x.id === indId)
     if (!p) return
     const s = STYLES.find(x => x.id === p.s) || STYLES[0]
+    const namedPalette = p.pal
+      ? Object.entries(PAL_FAM).flatMap(([family, palettes]) => palettes.map(palette => ({ family, palette }))).find(({ palette }) => palette[0] === p.pal)
+      : null
+    const fontPairIndex = p.fp
+      ? FONTPAIRS.findIndex(fontPair => fontPair.fd === p.fp[0] && fontPair.fb === p.fp[1])
+      : -1
+
+    setIndustryStarterHasBeenApplied(true)
     setCurrentIndustryId(indId)
     setCurrentStyleId(p.s)
     setLayout(p.l)
-    setBrandArt(p.art)
-    setTableStyle(p.tb)
-    setColRenames({ ...p.cols })
-    setFooterMsgType(p.msg)
-    setQrStyle(p.qr)
-    setStampStyle(p.stamp)
-    setDetailLevel(p.lvl)
-    setFestiveOcc(p.occ || 'none')
-    setActivePalette(null)
-    setPaletteName(null)
+    setBrandArt(p.art || s.art || 'none')
+    setArtVariation(0)
+    setTableStyle(p.tb || 'clean')
+    setColRenames({ ...(p.cols || {}) })
+    setFooterMsgType(p.msg || 'none')
+    setFooterCustomMsg('')
+    setQrStyle(p.qr || 'classic')
+    setStampStyle(p.stamp || 'brand')
+    setSigType(s.sig || 'script')
+    setSigImgData(null)
+    setDetailLevel(p.lvl || '1')
+    setInvoiceCopy('0')
+    setTextSize('1')
+    setDocStatus('sent')
+    setVerifiedSeal(true)
+    setFestiveOcc(p.occ || s.occ || 'none')
+    setSelectedLang(p.lang || s.lang || 'en')
+    setFontPairIdx(fontPairIndex >= 0 ? String(fontPairIndex) : '')
+    setPaperFinish('white')
+    setPaperColor(null)
+    setActivePalette(namedPalette ? palFrom(namedPalette.palette[1], namedPalette.palette[2]) : null)
+    setPaletteName(namedPalette?.palette[0] || null)
+    setPalFamily(namedPalette?.family || 'Indian heritage')
+    setCustomPreviewHtml(null)
+    latestInlineHtmlRef.current = ''
+    if (inlineEditRef.current) inlineEditRef.current.innerHTML = ''
     setBaseStarterName(p.name + ' starter')
 
     // Synchronize customizer state with the selected industry starter
@@ -578,14 +613,8 @@ export default function TemplateMixer({
       setCuAc(s.bank ? s.bank[1] : '50200012345678')
       setCuIfsc(s.bank ? s.bank[2] : 'HDFC0000240')
       setCuUpi(s.upi || 'pay@upi')
-      setCuItems((s.items || []).map(it => ({
-        desc: it[0],
-        hsn: it[1] || '998314',
-        qty: it[2] || 1,
-        rate: it[3] || 1000,
-        unit: it[4] || 'nos',
-        gst: s.gst || 18
-      })))
+      setCuAdv(s.adv !== undefined ? s.adv : 0)
+      setCuItems(getCustomizerItems(s))
       setCuNotes(Array.isArray(s.notes) ? s.notes.join('\n') : (s.notes || 'Payment due within 15 days.'))
       const generatedNo = `INV-2026-${String(100 + (s.id ? s.id.length * 17 : 34) + (p.l ? p.l.length * 7 : 28)).padStart(4, '0')}`
       setCuNo(generatedNo)
@@ -834,14 +863,16 @@ export default function TemplateMixer({
     const sellerGeo = parseCityState(s.city, 'Maharashtra')
     const clientGeo = parseCityState(s.ccity, 'Maharashtra')
 
-    const items = (s.items || []).map((it, idx) => ({
+    const items = fmtOf(s).rows.map((it, idx) => ({
       id: `item_mix_${Date.now()}_${idx}`,
-      description: it[0] || 'Item',
-      hsnSac: it[1] || '998314',
-      quantity: parseFloat(it[2]) || 1,
-      rate: parseFloat(it[3]) || 0,
-      taxRate: parseFloat(s.gst) || 18,
-      unit: it[4] || 'nos'
+      description: it.desc || 'Item',
+      hsnSac: it.hsn || '998314',
+      quantity: parseFloat(it.qty) || 1,
+      rate: parseFloat(it.rate) || 0,
+      taxRate: Number.isFinite(Number(it.gst !== undefined ? it.gst : s.gst))
+        ? Number(it.gst !== undefined ? it.gst : s.gst)
+        : 18,
+      unit: it.unit || 'nos'
     }))
 
     const invGstin = s.gstin || '27AABCI1234F1Z5'
@@ -1807,7 +1838,6 @@ export default function TemplateMixer({
               <Icon name={isSaving ? 'clock' : 'checkCircle'} size={15} />
               {isSaving ? 'Saving…' : 'Save Invoice'}
             </button>
-            {!isPro && <button type="button" className="chip template-watermark-upgrade" onClick={requestWatermarkUpgrade}>Remove watermark · Upgrade</button>}
           </div>
 
           {/* Live Rendered Invoice */}

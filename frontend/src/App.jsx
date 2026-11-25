@@ -14,6 +14,8 @@ import { initialCustomers, initialProducts, initialQuotations, initialBusinessPr
 import { parseInvoicePrompt } from './utils/aiParser'
 import { getEffectivePlan } from './utils/plans'
 import { loadHtml2Pdf } from './utils/pdfGenerator'
+import { calculateInvoiceTotals, formatINR } from './utils/calculations'
+import { allocateCustomerCredits, getAvailableCustomerCredits } from './utils/customerCredits'
 import './App.css'
 
 const normalizeProduct = product => ({
@@ -48,6 +50,9 @@ export default function App() {
   })
   const [products, setProducts] = useState(() => {
     try { return (JSON.parse(localStorage.getItem('invoxa_products')) || initialProducts).map(normalizeProduct) } catch { return initialProducts.map(normalizeProduct) }
+  })
+  const [creditNotes, setCreditNotes] = useState(() => {
+    try { return JSON.parse(localStorage.getItem('invoxa_credit_notes_v2')) || [] } catch { return [] }
   })
   const [businessProfile, setBusinessProfile] = useState(() => {
     try { return JSON.parse(localStorage.getItem('invoxa_profile')) || initialBusinessProfile } catch { return initialBusinessProfile }
@@ -87,6 +92,9 @@ export default function App() {
     try { localStorage.setItem('invoxa_products', JSON.stringify(products)) } catch { }
   }, [products])
   useEffect(() => {
+    try { localStorage.setItem('invoxa_credit_notes_v2', JSON.stringify(creditNotes)) } catch { }
+  }, [creditNotes])
+  useEffect(() => {
     try { localStorage.setItem('invoxa_profile', JSON.stringify(businessProfile)) } catch { }
   }, [businessProfile])
 
@@ -120,6 +128,10 @@ export default function App() {
 
       api.getProducts().then(data => {
         if (data.products) setProducts(data.products.map(normalizeProduct))
+      }).catch(() => {})
+
+      api.getCreditNotes().then(data => {
+        if (data.creditNotes) setCreditNotes(data.creditNotes)
       }).catch(() => {})
     }
   }, [])
@@ -167,6 +179,9 @@ export default function App() {
 
       const prodData = await api.getProducts()
       setProducts((prodData.products || []).map(normalizeProduct))
+
+      const creditData = await api.getCreditNotes()
+      setCreditNotes(creditData.creditNotes || [])
     } catch (err) {
       console.warn('Failed to load user specific data:', err.message)
     }
@@ -180,11 +195,13 @@ export default function App() {
     localStorage.removeItem('invoxa_customers')
     localStorage.removeItem('invoxa_products')
     localStorage.removeItem('invoxa_profile')
+    localStorage.removeItem('invoxa_credit_notes_v2')
     setCurrentUser(null)
     setProTrial(null)
     setInvoices(initialSampleInvoices)
     setCustomers(initialCustomers)
     setProducts(initialProducts.map(normalizeProduct))
+    setCreditNotes([])
     setBusinessProfile(initialBusinessProfile)
     setAppState('public')
     setCurrentView('home')
@@ -337,6 +354,17 @@ export default function App() {
     }
 
     const invoiceDocument = { ...savedInvoice, docType: 'invoice' }
+    const availableCredits = getAvailableCustomerCredits(creditNotes, invoices, invoiceDocument.client, invoiceDocument.id)
+    const requestedCredit = Math.max(0, Number(invoiceDocument.customerCreditApplied) || 0)
+    const availableTotal = availableCredits.reduce((sum, credit) => sum + credit.available, 0)
+    const invoiceTotal = calculateInvoiceTotals(invoiceDocument).grandTotal
+    const maxCredit = Math.min(availableTotal, invoiceTotal)
+    if (requestedCredit > maxCredit + 0.01) {
+      throw new Error(`This customer can apply up to ${formatINR(maxCredit)} of available credit to this invoice.`)
+    }
+    const applications = allocateCustomerCredits(availableCredits, requestedCredit)
+    invoiceDocument.customerCreditApplications = applications
+    invoiceDocument.customerCreditApplied = applications.reduce((sum, application) => sum + application.amount, 0)
     const token = localStorage.getItem('invoxa_token')
     let invoiceToStore = invoiceDocument
 
@@ -463,6 +491,8 @@ export default function App() {
           setQuotations={setQuotations}
           customers={customers}
           setCustomers={setCustomers}
+          creditNotes={creditNotes}
+          setCreditNotes={setCreditNotes}
           products={products}
           setProducts={setProducts}
           businessProfile={businessProfile}
@@ -515,6 +545,8 @@ export default function App() {
         <InvoiceEditor
           key={activeInvoice?.id || 'editor'}
           initialInvoice={activeInvoice}
+          invoices={invoices}
+          creditNotes={creditNotes}
           isPro={getEffectivePlan(planAccessUser) !== 'free'}
           originTab={editorOrigin}
           onSave={handleSaveInvoice}

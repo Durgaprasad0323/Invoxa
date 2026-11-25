@@ -1004,6 +1004,11 @@
   flex: none;
 }
 
+.ii .py > div > svg {
+  width: 100%;
+  height: 100%;
+}
+
 .ii .st {
   font-size: .62em;
   opacity: .75;
@@ -1830,6 +1835,12 @@
   border-bottom: 1px solid var(--line, rgba(0, 0, 0, 0.1));
   display: grid;
   gap: 6px;
+}
+
+.ph .sec svg {
+  display: block;
+  width: 88px;
+  height: 88px;
 }
 
 .ph .ln {

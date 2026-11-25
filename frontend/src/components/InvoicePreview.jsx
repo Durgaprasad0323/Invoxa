@@ -7,12 +7,17 @@ import { loadHtml2Pdf } from '../utils/pdfGenerator'
 import Icon from './ui/Icon'
 import '../templateEngine.css'
 
-export default function InvoicePreview({ invoice, previewRef, isPrintOnly = false, isLiveEditing = false, isPro = false, onUpgrade }) {
+export default function InvoicePreview({ invoice, previewRef, isPrintOnly = false, isLiveEditing = false, isPro = false, onUpgrade, onLayoutChange }) {
   const [selectedLayout, setSelectedLayout] = useState(invoice?.layout || 'classic')
   const [paperTexture, setPaperTexture] = useState('white')
   const [stampActive, setStampActive] = useState('brand')
   const [isPdfDownloading, setIsPdfDownloading] = useState(false)
   const [isDirectEditable, setIsDirectEditable] = useState(true)
+
+  const handleLayoutChange = (layout) => {
+    setSelectedLayout(layout)
+    onLayoutChange?.(layout)
+  }
 
   useEffect(() => {
     if (invoice?.layout) {
@@ -57,7 +62,6 @@ export default function InvoicePreview({ invoice, previewRef, isPrintOnly = fals
   const engineTemplate = invoxaInvoiceToEngineTemplate({
     ...invoice,
     layout: selectedLayout,
-    themeColor: selectedLayout === 'classic' || selectedLayout === 'receipt' || selectedLayout === 'thermal' ? '#1e293b' : invoice.themeColor,
     artStyle: selectedLayout === 'classic' || selectedLayout === 'receipt' || selectedLayout === 'thermal' ? 'none' : invoice.artStyle
   })
 
@@ -87,6 +91,8 @@ export default function InvoicePreview({ invoice, previewRef, isPrintOnly = fals
   }
 
   const totals = calculateInvoiceTotals(invoice)
+  const customerCreditApplied = Math.min(Math.max(0, Number(invoice.customerCreditApplied) || 0), totals.grandTotal)
+  const invoiceBalanceDue = Math.max(0, totals.grandTotal - customerCreditApplied)
   const documentType = invoice.docType === 'quotation'
     ? 'quote'
     : (['quote', 'estimate'].includes(invoice.docType) ? invoice.docType : 'invoice')
@@ -103,11 +109,19 @@ export default function InvoicePreview({ invoice, previewRef, isPrintOnly = fals
   ].filter(([, value]) => Boolean(value))
   const hasPaymentDetails = bankDetails.length > 0 || hasUpiDetails
   const themeClass = `theme-${invoice.theme || 'emerald'}`
-  const freePlanWatermark = isPro ? null : (
+  const freePlanWatermark = !isPro && !isPrintOnly ? (
     <div className="invoice-free-plan-watermark" contentEditable={false}>
-      {!isPrintOnly && <button type="button" className="no-print" data-html2canvas-ignore="true" onClick={onUpgrade} aria-label="Upgrade to remove watermark">Remove watermark</button>}
+      <button
+        type="button"
+        className="no-print"
+        data-html2canvas-ignore="true"
+        onClick={onUpgrade}
+        aria-label="Upgrade to remove the invoice watermark"
+      >
+        Remove watermark
+      </button>
     </div>
-  )
+  ) : null
 
   return (
     <div className="invoice-preview-wrapper" ref={previewRef}>
@@ -134,7 +148,7 @@ export default function InvoicePreview({ invoice, previewRef, isPrintOnly = fals
             className="form-input"
             style={{ width: 'auto', padding: '5px 10px', fontSize: '0.85rem' }}
             value={selectedLayout}
-            onChange={(e) => setSelectedLayout(e.target.value)}
+            onChange={(e) => handleLayoutChange(e.target.value)}
           >
             <optgroup label="Physical & Traditional Formats">
               <option value="classic"> Traditional Indian GST Bill (Boxed Grid)</option>
@@ -207,6 +221,7 @@ export default function InvoicePreview({ invoice, previewRef, isPrintOnly = fals
           </button>
         </div>
 
+        <div className="invoice-preview-toolbar-actions">
         <button
           className="btn-primary-action"
           style={{ padding: '6px 14px', fontSize: '0.85rem' }}
@@ -216,6 +231,7 @@ export default function InvoicePreview({ invoice, previewRef, isPrintOnly = fals
           <Icon name={isPdfDownloading ? 'clock' : 'download'} size={15} />
           {isPdfDownloading ? 'Saving PDF…' : 'Download PDF'}
         </button>
+        </div>
       </div>
 
       {isDirectEditable && (
@@ -257,14 +273,16 @@ export default function InvoicePreview({ invoice, previewRef, isPrintOnly = fals
               <Icon name="checkCircle" size={16} /> Digitized Tax Invoice (Exact Matching Items &amp; Calculations)
             </span>
           </div>
-          <div
-            className={`inv${!isPro ? ' invoice-has-watermark' : ''}`}
-            contentEditable={isDirectEditable}
-            suppressContentEditableWarning={true}
-            style={{ width: '100%', outline: isDirectEditable ? '1.5px dashed #86efac' : 'none', borderRadius: 6 }}
-            dangerouslySetInnerHTML={{ __html: renderA4(engineTemplate, { l: 'classic', out: 'a4', paper: paperTexture, stamp: stampActive, status: invoice.status?.toLowerCase() === 'paid' ? 'paid' : 'sent', seal: true, msg: invoice.reviewQrUrl ? 'review' : 'none', reviewQrImg: invoice.reviewQrUrl || null }) }}
-          />
-          {freePlanWatermark}
+          <div className="invoice-preview-document-with-upgrade">
+            <div
+              className={`inv${!isPro ? ' invoice-has-watermark' : ''}`}
+              contentEditable={isDirectEditable}
+              suppressContentEditableWarning={true}
+              style={{ width: '100%', outline: isDirectEditable ? '1.5px dashed #86efac' : 'none', borderRadius: 6 }}
+              dangerouslySetInnerHTML={{ __html: renderA4(engineTemplate, { l: 'classic', out: 'a4', paper: paperTexture, stamp: stampActive, status: invoice.status?.toLowerCase() === 'paid' ? 'paid' : 'sent', seal: true, msg: invoice.reviewQrUrl ? 'review' : 'none', reviewQrImg: invoice.reviewQrUrl || null }) }}
+            />
+            {freePlanWatermark}
+          </div>
         </div>
       ) : selectedLayout !== 'classic-invoxa' ? (
         <div
@@ -401,8 +419,8 @@ export default function InvoicePreview({ invoice, previewRef, isPrintOnly = fals
           <div className="doc-totals-section">
             <div className="doc-words-and-notes">
               <div className="doc-amount-words">
-                <span className="doc-box-title">AMOUNT IN WORDS:</span>
-                <p>{numberToIndianWords(totals.grandTotal)}</p>
+                <span className="doc-box-title">{customerCreditApplied > 0 ? 'BALANCE DUE IN WORDS:' : 'AMOUNT IN WORDS:'}</span>
+                <p>{numberToIndianWords(customerCreditApplied > 0 ? invoiceBalanceDue : totals.grandTotal)}</p>
               </div>
 
               {invoice.notes && (
@@ -458,9 +476,10 @@ export default function InvoicePreview({ invoice, previewRef, isPrintOnly = fals
 
               <div className="breakdown-divider"></div>
 
+              {customerCreditApplied > 0 && <div className="breakdown-row discount"><span>Customer credit applied:</span><span>- {formatINR(customerCreditApplied)}</span></div>}
               <div className="breakdown-row grand-total">
-                <span>Total Payable:</span>
-                <span>{formatINR(totals.grandTotal)}</span>
+                <span>{customerCreditApplied > 0 ? 'Balance Due:' : 'Total Payable:'}</span>
+                <span>{formatINR(invoiceBalanceDue)}</span>
               </div>
             </div>
           </div>
@@ -471,7 +490,7 @@ export default function InvoicePreview({ invoice, previewRef, isPrintOnly = fals
                 <div className="qr-box">
                   {upiQrUrl
                     ? <img src={upiQrUrl} alt="UPI payment QR" style={{ width: 52, height: 52, objectFit: 'contain' }} />
-                    : <QRCodeSVG value={`upi://pay?pa=${encodeURIComponent(upiId)}&pn=${encodeURIComponent(invoice.seller?.name || 'Business')}&am=${totals.grandTotal.toFixed(2)}&cu=INR&tn=Invoice%20${encodeURIComponent(invoice.invoiceNumber || 'INV')}`} size={80} level="M" />}
+                    : <QRCodeSVG value={`upi://pay?pa=${encodeURIComponent(upiId)}&pn=${encodeURIComponent(invoice.seller?.name || 'Business')}&am=${invoiceBalanceDue.toFixed(2)}&cu=INR&tn=Invoice%20${encodeURIComponent(invoice.invoiceNumber || 'INV')}`} size={48} level="M" />}
                 </div>
                 <div className="qr-info">
                   <small>Scan to pay via any UPI app</small>

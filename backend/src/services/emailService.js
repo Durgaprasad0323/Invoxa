@@ -1,22 +1,18 @@
 /**
- * Email OTP Service — Invoxa Account Verification
- * Uses Gmail SMTP (free). Requires Gmail App Password in .env
- *
- * Setup (one-time):
- *   1. Go to myaccount.google.com → Security → 2-Step Verification → App Passwords
- *   2. Create App Password for "Mail" → copy 16-char password
- *   3. Add to backend/.env:
- *      GMAIL_USER=your_gmail@gmail.com
- *      GMAIL_APP_PASSWORD=xxxx xxxx xxxx xxxx
+ * Email delivery supports Resend's HTTPS API (recommended on Render Free)
+ * and Gmail SMTP as a fallback on hosts that allow SMTP egress.
+ * Configure RESEND_API_KEY and EMAIL_FROM in the backend environment.
  */
 
 import nodemailer from 'nodemailer'
 
-const getTransporter = () => {
-  const gmailUser = process.env.GMAIL_USER
-  const gmailPass = process.env.GMAIL_APP_PASSWORD
+const isConfiguredValue = value => Boolean(value && !/^your[_-]/i.test(value.trim()))
 
-  if (gmailUser && gmailPass && gmailUser !== 'your_gmail@gmail.com') {
+const getTransporter = () => {
+  const gmailUser = process.env.GMAIL_USER?.trim()
+  const gmailPass = process.env.GMAIL_APP_PASSWORD?.trim()
+
+  if (isConfiguredValue(gmailUser) && isConfiguredValue(gmailPass)) {
     return nodemailer.createTransport({
       service: 'gmail',
       auth: { user: gmailUser, pass: gmailPass }
@@ -25,9 +21,62 @@ const getTransporter = () => {
   return null
 }
 
-export const sendEmailOTP = async (email, otp, name = 'User') => {
+const sendEmail = async ({ to, subject, html, text }) => {
+  const resendApiKey = process.env.RESEND_API_KEY?.trim()
+  if (resendApiKey) {
+    const from = process.env.EMAIL_FROM?.trim()
+    if (!from || /^your[_-]/i.test(from)) {
+      return { success: false, error: 'Email sender is not configured. Add EMAIL_FROM using a verified sending domain in the backend environment.' }
+    }
+
+    try {
+      const response = await fetch('https://api.resend.com/emails', {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${resendApiKey}`,
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({ from, to: [to], subject, html, text }),
+        signal: AbortSignal.timeout(15000)
+      })
+      const result = await response.json().catch(() => ({}))
+      if (!response.ok) {
+        console.error(`[Email] Resend rejected the request (HTTP ${response.status}).`)
+        return { success: false, error: 'Email provider rejected the message. Check the API key, verified sender domain, and Resend logs.' }
+      }
+      console.log(`[Email] Message accepted by Resend (${result.id || 'id unavailable'}).`)
+      return { success: true, provider: 'Resend', messageId: result.id }
+    } catch (err) {
+      console.error('[Email] Resend request failed:', err.name || 'NetworkError')
+      return { success: false, error: 'Email provider could not be reached. Please try again shortly.' }
+    }
+  }
+
   const transporter = getTransporter()
-  const gmailUser = process.env.GMAIL_USER
+  const gmailUser = process.env.GMAIL_USER?.trim()
+  if (transporter) {
+    try {
+      await transporter.sendMail({ from: `"Invoxa" <${gmailUser}>`, to, subject, html, text })
+      console.log('[Email] Message accepted by Gmail SMTP.')
+      return { success: true, provider: 'Gmail' }
+    } catch (err) {
+      console.error('[Email] Gmail SMTP send failed:', err.code || err.name || 'SMTPError')
+      return { success: false, error: 'Email could not be sent through Gmail SMTP. Check the mail credentials and hosting provider SMTP access.' }
+    }
+  }
+
+  return {
+    success: false,
+    error: 'Email service is not configured. Set RESEND_API_KEY and EMAIL_FROM on the backend, or configure Gmail SMTP.'
+  }
+}
+
+const escapeHtml = value => String(value || '').replace(/[&<>"']/g, character => ({
+  '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'
+}[character]))
+
+export const sendEmailOTP = async (email, otp, name = 'User') => {
+  const safeName = escapeHtml(name)
 
   const htmlBody = `
     <div style="font-family: 'Segoe UI', Arial, sans-serif; max-width: 480px; margin: 0 auto; background: #f8fafc; border-radius: 12px; overflow: hidden; border: 1px solid #e2e8f0;">
@@ -39,7 +88,7 @@ export const sendEmailOTP = async (email, otp, name = 'User') => {
       </div>
 
       <div style="padding: 32px;">
-        <p style="color: #374151; font-size: 1rem; margin: 0 0 20px;">Hi <strong>${name}</strong>,</p>
+        <p style="color: #374151; font-size: 1rem; margin: 0 0 20px;">Hi <strong>${safeName}</strong>,</p>
         <p style="color: #6b7280; font-size: 0.95rem; margin: 0 0 24px; line-height: 1.6;">
           Use the code below to verify your email address and complete your Invoxa account setup.
         </p>
@@ -61,31 +110,16 @@ export const sendEmailOTP = async (email, otp, name = 'User') => {
     </div>
   `
 
-  if (transporter) {
-    try {
-      await transporter.sendMail({
-        from: `"Invoxa" <${gmailUser}>`,
-        to: email,
-        subject: `${otp} is your Invoxa verification code`,
-        html: htmlBody,
-        text: `Your Invoxa verification code is: ${otp}. Valid for 10 minutes.`
-      })
-      console.log(`✅ [Email] OTP sent to ${email}`)
-      return { success: true, provider: 'Gmail' }
-    } catch (err) {
-      console.error('❌ [Email] Send failed:', err.message)
-      return { success: false, error: err.message }
-    }
-  }
-
-  // Fallback — no email credentials configured
-  console.log(`\n📧 [EMAIL SERVICE] Cannot send real email to ${email}: GMAIL_USER or GMAIL_APP_PASSWORD not configured in backend/.env`)
-  return { success: false, error: 'Email service credentials not set in backend/.env (requires GMAIL_USER & GMAIL_APP_PASSWORD)' }
+  return sendEmail({
+    to: email,
+    subject: `${otp} is your Invoxa verification code`,
+    html: htmlBody,
+    text: `Your Invoxa verification code is: ${otp}. Valid for 10 minutes.`
+  })
 }
 
 export const sendPasswordResetEmail = async (email, otp, name = 'User') => {
-  const transporter = getTransporter()
-  const gmailUser = process.env.GMAIL_USER
+  const safeName = escapeHtml(name)
 
   const htmlBody = `
     <div style="font-family: 'Segoe UI', Arial, sans-serif; max-width: 480px; margin: 0 auto; background: #f8fafc; border-radius: 12px; overflow: hidden; border: 1px solid #e2e8f0;">
@@ -97,7 +131,7 @@ export const sendPasswordResetEmail = async (email, otp, name = 'User') => {
       </div>
 
       <div style="padding: 32px;">
-        <p style="color: #374151; font-size: 1rem; margin: 0 0 20px;">Hi <strong>${name}</strong>,</p>
+        <p style="color: #374151; font-size: 1rem; margin: 0 0 20px;">Hi <strong>${safeName}</strong>,</p>
         <p style="color: #6b7280; font-size: 0.95rem; margin: 0 0 24px; line-height: 1.6;">
           We received a request to reset your Invoxa account password. Use the verification code below to set a new password:
         </p>
@@ -119,22 +153,10 @@ export const sendPasswordResetEmail = async (email, otp, name = 'User') => {
     </div>
   `
 
-  if (transporter) {
-    try {
-      await transporter.sendMail({
-        from: `"Invoxa Support" <${gmailUser}>`,
-        to: email,
-        subject: `${otp} is your Invoxa password reset code`,
-        html: htmlBody,
-        text: `Your Invoxa password reset code is: ${otp}. Valid for 10 minutes.`
-      })
-      console.log(`✅ [Password Reset] Email sent to ${email}`)
-      return { success: true, provider: 'Gmail' }
-    } catch (err) {
-      console.error('❌ [Password Reset] Email failed:', err.message)
-      return { success: false, error: err.message }
-    }
-  }
-
-  return { success: false, error: 'Email service credentials not configured.' }
+  return sendEmail({
+    to: email,
+    subject: `${otp} is your Invoxa password reset code`,
+    html: htmlBody,
+    text: `Your Invoxa password reset code is: ${otp}. Valid for 10 minutes.`
+  })
 }
